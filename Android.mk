@@ -29,6 +29,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH) \
 		$(LOCAL_PATH)/ncurses \
 
 LOCAL_MODULE := libncurses
+LOCAL_SYSTEM_EXT_MODULE := true
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -43,7 +44,7 @@ TERMINFO_FILES := \
 	x/xterm-vt220 x/xterm-256color w/wsvt25 w/wsvt25m
 
 TERMINFO_SOURCE := $(LOCAL_PATH)/lib/terminfo/
-TERMINFO_TARGET := $(TARGET_OUT_ETC)/terminfo
+TERMINFO_TARGET := $(TARGET_OUT_SYSTEM_EXT_ETC)/terminfo
 $(TERMINFO_TARGET): $(ACP)
 		@echo "copy terminfo to /etc/" 
 		@mkdir -p $@
