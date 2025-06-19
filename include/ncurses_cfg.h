@@ -55,8 +55,8 @@ void exit (int);
 #endif
 #define HAVE_LONG_FILE_NAMES 1
 #define MIXEDCASE_FILENAMES 1
-#define TERMINFO_DIRS "/system/etc/terminfo"
-#define TERMINFO "/system/etc/terminfo"
+#define TERMINFO_DIRS "/system_ext/etc/terminfo"
+#define TERMINFO "/system_ext/etc/terminfo"
 #define PURE_TERMINFO 1
 #define USE_HOME_TERMINFO 1
 #define USE_ROOT_ENVIRON 1
