@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2011,2014 Free Software Foundation, Inc.                   *
+ * Copyright 2020,2022 Thomas E. Dickey                                     *
+ * Copyright 2014 Free Software Foundation, Inc.                            *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -34,7 +35,7 @@
 
 #define WRAP(type, name)        \
   type                          \
-  name ## _as_function ()       \
+  name ## _as_function (void)   \
   {                             \
     return name;                \
   }

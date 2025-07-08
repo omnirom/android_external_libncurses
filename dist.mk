@@ -1,5 +1,6 @@
 ##############################################################################
-# Copyright (c) 1998-2014,2015 Free Software Foundation, Inc.                #
+# Copyright 2018-2023,2024 Thomas E. Dickey                                  #
+# Copyright 1998-2017,2018 Free Software Foundation, Inc.                    #
 #                                                                            #
 # Permission is hereby granted, free of charge, to any person obtaining a    #
 # copy of this software and associated documentation files (the "Software"), #
@@ -25,7 +26,7 @@
 # use or other dealings in this Software without prior written               #
 # authorization.                                                             #
 ##############################################################################
-# $Id: dist.mk,v 1.1064 2015/08/06 23:13:39 tom Exp $
+# $Id: dist.mk,v 1.1610 2024/04/27 13:55:54 tom Exp $
 # Makefile for creating ncurses distributions.
 #
 # This only needs to be used directly as a makefile by developers, but
@@ -36,18 +37,21 @@ SHELL = /bin/sh
 
 # These define the major/minor/patch versions of ncurses.
 NCURSES_MAJOR = 6
-NCURSES_MINOR = 0
-NCURSES_PATCH = 20150808
+NCURSES_MINOR = 5
+NCURSES_PATCH = 20240427
 
 # We don't append the patch to the version, since this only applies to releases
 VERSION = $(NCURSES_MAJOR).$(NCURSES_MINOR)
+
+WEBSITE = https://invisible-island.net
+HOMEPAGE = $(WEBSITE)/ncurses
 
 # The most recent html files were generated with lynx 2.8.6 (or later), using
 # ncurses configured with
 #	--without-manpage-renames
 # on Debian/testing.  The -scrollbar and -width options are used to make lynx
 # use 79 columns as it did in 2.8.5 and before.
-DUMP	= lynx -dump -scrollbar=0 -width=79
+DUMP	= lynx -dump -scrollbar=0 -width=79 -display_charset=US-ASCII
 DUMP2	= $(DUMP) -nolist
 
 # gcc's file is "gnathtml.pl"
@@ -59,7 +63,7 @@ GNATHTML= gnathtml
 # would remove some text.  The man program on Redhat 6.1 appears to work with
 # man2html if we set the top/bottom margins to 6 (the default is 7).  Newer
 # versions of 'man' leave no margin (and make it harder to sync with pages).
-MAN2HTML= man2html -botm=0 -topm=0 -cgiurl '$$title.$$section$$subsection.html' -index
+MAN2HTML= man2html -botm=0 -topm=0 -cgiurl '$$title.$$section$$subsection.html' -index -mixsecs
 
 ALL	= ANNOUNCE doc/html/announce.html doc/ncurses-intro.doc doc/hackguide.doc manhtml adahtml
 
@@ -73,22 +77,19 @@ distclean:
 
 # Don't mess with announce.html.in unless you have lynx available!
 doc/html/announce.html: announce.html.in
-	sed 's,@VERSION@,$(VERSION),' <announce.html.in > $@
+	sed \
+		-e 's,@VERSION@,$(VERSION),g' \
+		-e 's,@WEBSITE@,$(WEBSITE),g' \
+		-e 's,@HOMEPAGE@,$(HOMEPAGE),g' <announce.html.in > $@
 
 ANNOUNCE : doc/html/announce.html
-	$(DUMP) doc/html/announce.html > $@
+	$(DUMP2) doc/html/announce.html > $@
 
 doc/ncurses-intro.doc: doc/html/ncurses-intro.html
 	$(DUMP2) doc/html/ncurses-intro.html > $@
 doc/hackguide.doc: doc/html/hackguide.html
 	$(DUMP2) doc/html/hackguide.html > $@
 
-# This is the original command:
-#	MANPROG	= tbl | nroff -man
-#
-# This happens to work for groff 1.18.1 on Debian.  At some point groff's
-# maintainer changed the line-length (we do not want/need that here).
-#
 # The distributed html files are formatted using
 #	configure --without-manpage-renames
 #
@@ -96,7 +97,7 @@ doc/hackguide.doc: doc/html/hackguide.html
 # If that conflicts with the --without-manpage-renames, you can install those
 # in a different location using the --with-install-prefix option of the
 # configure script.
-MANPROG	= tbl | nroff -mandoc -rLL=65n -rLT=71n -Tascii
+MANPROG	= tbl | nroff -mandoc -rHY=0 -rLL=78n -rLT=78n -Tascii
 
 manhtml:
 	@for f in doc/html/man/*.html; do \
@@ -123,19 +124,20 @@ manhtml:
 	@echo 's/<I>/<EM>/g'         >> subst.tmp
 	@echo 's/<\/I>/<\/EM>/g'     >> subst.tmp
 	@misc/csort < subst.tmp | uniq > subst.sed
-	@echo '/<\/TITLE>/a\' >> subst.sed
-	@echo '<link rev=made href="mailto:bug-ncurses@gnu.org">\' >> subst.sed
-	@echo '<meta http-equiv="Content-Type" content="text\/html; charset=iso-8859-1">' >> subst.sed
+	@echo 's%[_-]*_-[_-]*%_%g'   >> subst.sed
+	@echo '/<\/TITLE>/a\\'       >> subst.sed
+	@echo '<link rel="author" href="mailto:bug-ncurses@gnu.org">\\' >> subst.sed
 	@rm -f subst.tmp
 	@for f in man/*.[0-9]* ; do \
 	   m=`basename $$f` ;\
-	   T=`egrep '^.TH' $$f|sed -e 's/^.TH //' -e s'/"//g' -e 's/[ 	]\+$$//'` ; \
+	   T=`$${EGREP-grep -E} '^.TH' $$f|sed -e 's/^.TH //' -e s'/"//g' -e 's/[ 	]\+$$//'` ; \
 	   g=$${m}.html ;\
 	   if [ -f doc/html/$$g ]; then chmod +w doc/html/$$g; fi;\
 	   echo "Converting $$m to HTML" ;\
-	   echo '<!-- ' > doc/html/man/$$g ;\
-	   egrep '^.\\"[^#]' $$f | \
-	   	sed	-e 's/\$$/@/g' \
+	   echo '<!--' > doc/html/man/$$g ;\
+		sed	-e '/^\.[a-zA-Z]/,99999d' $$f | \
+		$${EGREP-grep -E} '^.\\"[^#]' | \
+		sed	-e 's/\$$/@/g' \
 			-e 's/^.../  */' \
 			-e 's/</\&lt;/g' \
 			-e 's/>/\&gt;/g' \

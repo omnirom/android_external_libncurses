@@ -1,6 +1,8 @@
 // * This makes emacs happy -*-Mode: C++;-*-
+// vile:cppmode
 /****************************************************************************
- * Copyright (c) 1998-2012,2014 Free Software Foundation, Inc.              *
+ * Copyright 2019-2021,2022 Thomas E. Dickey                                *
+ * Copyright 1998-2012,2014 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -31,7 +33,7 @@
  *   Author: Juergen Pfeifer, 1997                                          *
  ****************************************************************************/
 
-// $Id: cursesf.h,v 1.32 2014/08/09 22:06:11 Adam.Jiang Exp $
+// $Id: cursesf.h,v 1.39 2022/08/20 20:52:15 tom Exp $
 
 #ifndef NCURSES_CURSESF_H_incl
 #define NCURSES_CURSESF_H_incl 1
@@ -47,14 +49,14 @@ extern "C" {
 }
 //
 // -------------------------------------------------------------------------
-// The abstract base class for buitin and user defined Fieldtypes.
+// The abstract base class for builtin and user defined Fieldtypes.
 // -------------------------------------------------------------------------
 //
-class NCURSES_IMPEXP NCursesFormField; // forward declaration
+class NCURSES_CXX_IMPEXP NCursesFormField; // forward declaration
 
 // Class to represent builtin field types as well as C++ written new
 // fieldtypes (see classes UserDefineFieldType...
-class NCURSES_IMPEXP NCursesFieldType
+class NCURSES_CXX_IMPEXP NCursesFieldType
 {
   friend class NCursesFormField;
 
@@ -100,7 +102,7 @@ public:
 // The class representing a forms field, wrapping the lowlevel FIELD struct
 // -------------------------------------------------------------------------
 //
-class NCURSES_IMPEXP NCursesFormField
+class NCURSES_CXX_IMPEXP NCursesFormField
 {
   friend class NCursesForm;
 
@@ -151,7 +153,7 @@ public:
   {
   }
 
-  virtual ~NCursesFormField ();
+  virtual ~NCursesFormField () THROWS(NCursesException);
 
   // Duplicate the field at a new position
   inline NCursesFormField* dup(int first_row, int first_col)
@@ -337,7 +339,7 @@ extern "C" {
 // The class representing a form, wrapping the lowlevel FORM struct
 // -------------------------------------------------------------------------
 //
-class NCURSES_IMPEXP NCursesForm : public NCursesPanel
+class NCURSES_CXX_IMPEXP NCursesForm : public NCursesPanel
 {
 protected:
   FORM* form;  // the lowlevel structure
@@ -470,7 +472,7 @@ public:
   {
   }
 
-  virtual ~NCursesForm();
+  virtual ~NCursesForm() THROWS(NCursesException);
 
   // Set the default attributes for the form
   virtual void setDefaultAttributes();
@@ -499,21 +501,21 @@ public:
   }
 
   // Decorations
-  inline void frame(const char *title=NULL, const char* btitle=NULL) {
+  inline void frame(const char *title=NULL, const char* btitle=NULL) NCURSES_OVERRIDE {
     if (b_framed)
       NCursesPanel::frame(title,btitle);
     else
       OnError(E_SYSTEM_ERROR);
   }
 
-  inline void boldframe(const char *title=NULL, const char* btitle=NULL) {
+  inline void boldframe(const char *title=NULL, const char* btitle=NULL) NCURSES_OVERRIDE {
     if (b_framed)
       NCursesPanel::boldframe(title,btitle);
     else
       OnError(E_SYSTEM_ERROR);
   }
 
-  inline void label(const char *topLabel, const char *bottomLabel) {
+  inline void label(const char *topLabel, const char *bottomLabel) NCURSES_OVERRIDE {
     if (b_framed)
       NCursesPanel::label(topLabel,bottomLabel);
     else
@@ -628,7 +630,7 @@ public:
 // data belongs to some class T. Use T as template argument
 // to create a UserField.
 // -------------------------------------------------------------------------
-template<class T> class NCURSES_IMPEXP NCursesUserField : public NCursesFormField
+template<class T> class NCURSES_CXX_IMPEXP NCursesUserField : public NCursesFormField
 {
 public:
   NCursesUserField (int rows,
@@ -645,7 +647,7 @@ public:
 	OnError(::set_field_userptr(field, STATIC_CAST(void *)(p_UserData)));
   }
 
-  virtual ~NCursesUserField() {};
+  virtual ~NCursesUserField() THROWS(NCursesException) {};
 
   inline const T* UserData (void) const {
     return reinterpret_cast<const T*>(::field_userptr (field));
@@ -661,7 +663,7 @@ public:
 // The same mechanism is used to attach user data to a form
 // -------------------------------------------------------------------------
 //
-template<class T> class NCURSES_IMPEXP NCursesUserForm : public NCursesForm
+template<class T> class NCURSES_CXX_IMPEXP NCursesUserForm : public NCursesForm
 {
 protected:
   // 'Internal' constructor, builds an object without association to a
@@ -702,7 +704,7 @@ public:
 				     (p_UserData)));
   };
 
-  virtual ~NCursesUserForm() {
+  virtual ~NCursesUserForm() THROWS(NCursesException) {
   };
 
   inline T* UserData (void) {
@@ -720,45 +722,45 @@ public:
 // Builtin Fieldtypes
 // -------------------------------------------------------------------------
 //
-class NCURSES_IMPEXP Alpha_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP Alpha_Field : public NCursesFieldType
 {
 private:
   int min_field_width;
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,min_field_width));
   }
 
 public:
-  Alpha_Field(int width)
+  explicit Alpha_Field(int width)
     : NCursesFieldType(TYPE_ALPHA),
       min_field_width(width) {
   }
 };
 
-class NCURSES_IMPEXP Alphanumeric_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP Alphanumeric_Field : public NCursesFieldType
 {
 private:
   int min_field_width;
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,min_field_width));
   }
 
 public:
-  Alphanumeric_Field(int width)
+  explicit Alphanumeric_Field(int width)
     : NCursesFieldType(TYPE_ALNUM),
       min_field_width(width) {
   }
 };
 
-class NCURSES_IMPEXP Integer_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP Integer_Field : public NCursesFieldType
 {
 private:
   int precision;
   long lower_limit, upper_limit;
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,
 			     precision,lower_limit,upper_limit));
   }
@@ -770,13 +772,13 @@ public:
   }
 };
 
-class NCURSES_IMPEXP Numeric_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP Numeric_Field : public NCursesFieldType
 {
 private:
   int precision;
   double lower_limit, upper_limit;
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,
 			     precision,lower_limit,upper_limit));
   }
@@ -788,12 +790,12 @@ public:
   }
 };
 
-class NCURSES_IMPEXP Regular_Expression_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP Regular_Expression_Field : public NCursesFieldType
 {
 private:
   char* regex;
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,regex));
   }
 
@@ -804,7 +806,7 @@ private:
   }
 
 public:
-  Regular_Expression_Field(const char *expr)
+  explicit Regular_Expression_Field(const char *expr)
     : NCursesFieldType(TYPE_REGEXP),
       regex(NULL)
   {
@@ -833,14 +835,14 @@ public:
   }
 };
 
-class NCURSES_IMPEXP Enumeration_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP Enumeration_Field : public NCursesFieldType
 {
 private:
   const char** list;
   int case_sensitive;
   int non_unique_matches;
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,
 			     list,case_sensitive,non_unique_matches));
   }
@@ -872,10 +874,10 @@ public:
   }
 };
 
-class NCURSES_IMPEXP IPV4_Address_Field : public NCursesFieldType
+class NCURSES_CXX_IMPEXP IPV4_Address_Field : public NCursesFieldType
 {
 private:
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype));
   }
 
@@ -895,7 +897,7 @@ extern "C" {
 // Abstract base class for User-Defined Fieldtypes
 // -------------------------------------------------------------------------
 //
-class NCURSES_IMPEXP UserDefinedFieldType : public NCursesFieldType
+class NCURSES_CXX_IMPEXP UserDefinedFieldType : public NCursesFieldType
 {
   friend class UDF_Init; // Internal helper to set up statics
 private:
@@ -910,7 +912,7 @@ protected:
   friend bool _nc_xx_fld_ccheck(int c, const void *);
   friend void* _nc_xx_fld_makearg(va_list*);
 
-  void set(NCursesFormField& f) {
+  void set(NCursesFormField& f) NCURSES_OVERRIDE {
     OnError(::set_field_type(f.get_field(),fieldtype,&f));
   }
 
@@ -924,8 +926,7 @@ protected:
   virtual bool char_check (int c) = 0;
 
 public:
-  UserDefinedFieldType() : NCursesFieldType(generic_fieldtype) {
-  }
+  UserDefinedFieldType();
 };
 
 extern "C" {
@@ -938,7 +939,7 @@ extern "C" {
 // Abstract base class for User-Defined Fieldtypes with Choice functions
 // -------------------------------------------------------------------------
 //
-class NCURSES_IMPEXP UserDefinedFieldType_With_Choice : public UserDefinedFieldType
+class NCURSES_CXX_IMPEXP UserDefinedFieldType_With_Choice : public UserDefinedFieldType
 {
   friend class UDF_Init; // Internal helper to set up statics
 private:
@@ -961,9 +962,7 @@ protected:
   virtual bool previous(NCursesFormField& f) = 0;
 
 public:
-  UserDefinedFieldType_With_Choice() {
-    fieldtype = generic_fieldtype_with_choice;
-  }
+  UserDefinedFieldType_With_Choice();
 };
 
 #endif /* NCURSES_CURSESF_H_incl */

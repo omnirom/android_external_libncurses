@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020,2022 Thomas E. Dickey                                     *
+ * Copyright 1998-2010,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -29,7 +30,7 @@
  * This test was written by Alexander V. Lukyanov to demonstrate difference
  * between ncurses 4.1 and SVR4 curses
  *
- * $Id: firstlast.c,v 1.7 2010/05/01 19:11:55 tom Exp $
+ * $Id: firstlast.c,v 1.10 2022/12/10 23:31:31 tom Exp $
  */
 
 #include <test.priv.h>
@@ -40,6 +41,11 @@ fill(WINDOW *w, const char *str)
     const char *s;
     int x0 = -1, y0 = -1;
     int x1, y1;
+    int maxx, maxy, limit;
+
+    getmaxyx(w, maxy, maxx);
+    wmove(w, 0, 0);
+    limit = maxy * maxx;
 
     for (;;) {
 	for (s = str; *s; s++) {
@@ -49,17 +55,61 @@ fill(WINDOW *w, const char *str)
 		wmove(w, 0, 0);
 		return;
 	    }
+	    /* waddch() should return ERR at the lower-right corner */
+	    if (--limit < 0) {
+		beep();
+		if (*str == '?')
+		    return;
+		napms(500);
+		wmove(w, maxy - 1, 0);
+		str = "?";
+		limit = maxx + 1;
+	    }
 	    x0 = x1;
 	    y0 = y1;
 	}
     }
 }
 
+static void
+usage(int ok)
+{
+    static const char *msg[] =
+    {
+	"Usage: firstlast [options]"
+	,""
+	,USAGE_COMMON
+    };
+    size_t n;
+
+    for (n = 0; n < SIZEOF(msg); n++)
+	fprintf(stderr, "%s\n", msg[n]);
+
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
+}
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
+
 int
-main(int argc GCC_UNUSED,
-     char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
     WINDOW *large, *small;
+    int ch;
+
+    while ((ch = getopt(argc, argv, OPTS_COMMON)) != -1) {
+	switch (ch) {
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
+	default:
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
+	}
+    }
+    if (optind < argc)
+	usage(FALSE);
+
     initscr();
     noecho();
 

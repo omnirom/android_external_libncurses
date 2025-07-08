@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2000-2007,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020,2023 Thomas E. Dickey                                     *
+ * Copyright 2000-2012,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -35,8 +36,9 @@
 **/
 
 #include <curses.priv.h>
+#include <tic.h>
 
-MODULE_ID("$Id: strings.c,v 1.8 2012/02/22 22:34:31 tom Exp $")
+MODULE_ID("$Id: strings.c,v 1.11 2023/05/27 20:13:10 tom Exp $")
 
 /****************************************************************************
  * Useful string functions (especially for mvcur)
@@ -93,7 +95,7 @@ _nc_str_null(string_desc * dst, size_t len)
  * Copy a descriptor
  */
 NCURSES_EXPORT(string_desc *)
-_nc_str_copy(string_desc * dst, string_desc * src)
+_nc_str_copy(string_desc * dst, const string_desc * const src)
 {
     *dst = *src;
     return dst;
@@ -105,7 +107,7 @@ _nc_str_copy(string_desc * dst, string_desc * src)
 NCURSES_EXPORT(bool)
 _nc_safe_strcat(string_desc * dst, const char *src)
 {
-    if (src != 0) {
+    if (PRESENT(src)) {
 	size_t len = strlen(src);
 
 	if (len < dst->s_size) {
@@ -126,7 +128,7 @@ _nc_safe_strcat(string_desc * dst, const char *src)
 NCURSES_EXPORT(bool)
 _nc_safe_strcpy(string_desc * dst, const char *src)
 {
-    if (src != 0) {
+    if (PRESENT(src)) {
 	size_t len = strlen(src);
 
 	if (len < dst->s_size) {

@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2004-2010,2011 Free Software Foundation, Inc.              *
+ * Copyright 2019-2021,2023 Thomas E. Dickey                                *
+ * Copyright 2004-2011,2016 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -39,7 +40,7 @@
 #include <wctype.h>
 #endif
 
-MODULE_ID("$Id: lib_add_wch.c,v 1.12 2011/03/22 09:31:15 Petr.Pavlu Exp $")
+MODULE_ID("$Id: lib_add_wch.c,v 1.18 2023/07/15 17:34:12 tom Exp $")
 
 /* clone/adapt lib_addch.c */
 static const cchar_t blankchar = NewChar(BLANK_TEXT);
@@ -55,7 +56,7 @@ static const cchar_t blankchar = NewChar(BLANK_TEXT);
  */
 
 /* Return bit mask for clearing color pair number if given ch has color */
-#define COLOR_MASK(ch) (~(attr_t)((ch) & A_COLOR ? A_COLOR : 0))
+#define COLOR_MASK(ch) (~(attr_t)(((ch) & A_COLOR) ? A_COLOR : 0))
 
 static NCURSES_INLINE cchar_t
 render_char(WINDOW *win, cchar_t ch)
@@ -114,7 +115,7 @@ render_char(WINDOW *win, cchar_t ch)
 #endif
 
 static bool
-newline_forces_scroll(WINDOW *win, NCURSES_SIZE_T * ypos)
+newline_forces_scroll(WINDOW *win, NCURSES_SIZE_T *ypos)
 {
     bool result = FALSE;
 
@@ -132,7 +133,7 @@ newline_forces_scroll(WINDOW *win, NCURSES_SIZE_T * ypos)
  * wrapped the cursor.  We don't do anything with this flag except set it when
  * wrapping, and clear it whenever we move the cursor.  If we try to wrap at
  * the lower-right corner of a window, we cannot move the cursor (since that
- * wouldn't be legal).  So we return an error (which is what SVr4 does). 
+ * wouldn't be legal).  So we return an error (which is what SVr4 does).
  * Unlike SVr4, we can successfully add a character to the lower-right corner
  * (Solaris 2.6 does this also, however).
  */
@@ -195,7 +196,7 @@ wadd_wch_literal(WINDOW *win, cchar_t ch)
      * adjustments.
      */
     {
-	int len = wcwidth(CharOf(ch));
+	int len = _nc_wacs_width(CharOf(ch));
 	int i;
 	int j;
 	wchar_t *chars;
@@ -203,10 +204,16 @@ wadd_wch_literal(WINDOW *win, cchar_t ch)
 	if (len == 0) {		/* non-spacing */
 	    if ((x > 0 && y >= 0)
 		|| (win->_maxx >= 0 && win->_cury >= 1)) {
-		if (x > 0 && y >= 0)
-		    chars = (win->_line[y].text[x - 1].chars);
-		else
+		if (x > 0 && y >= 0) {
+		    for (j = x - 1; j > 0; --j) {
+			if (!isWidecExt(win->_line[y].text[j])) {
+			    break;
+			}
+		    }
+		    chars = (win->_line[y].text[j].chars);
+		} else {
 		    chars = (win->_line[y - 1].text[win->_maxx].chars);
+		}
 		for (i = 0; i < CCHARW_MAX; ++i) {
 		    if (chars[i] == 0) {
 			TR(TRACE_VIRTPUT,

@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright 2019-2020,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2009,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -38,8 +39,9 @@
 */
 
 #include <curses.priv.h>
+#include <tic.h>
 
-MODULE_ID("$Id: add_tries.c,v 1.10 2010/12/19 01:31:14 tom Exp $")
+MODULE_ID("$Id: add_tries.c,v 1.13 2023/06/24 15:36:13 tom Exp $")
 
 #define SET_TRY(dst,src) if ((dst->ch = *src++) == 128) dst->ch = '\0'
 #define CMP_TRY(a,b) ((a)? (a == b) : (b == 128))
@@ -52,7 +54,7 @@ _nc_add_to_try(TRIES ** tree, const char *str, unsigned code)
 
     T((T_CALLED("_nc_add_to_try(%p, %s, %u)"),
        (void *) *tree, _nc_visbuf(str), code));
-    if (txt == 0 || *txt == '\0' || code == 0)
+    if (!VALID_STRING(str) || *txt == '\0' || code == 0)
 	returnCode(ERR);
 
     if ((*tree) != 0) {
@@ -109,6 +111,7 @@ _nc_add_to_try(TRIES ** tree, const char *str, unsigned code)
 		savedptr = ptr->child;
 		free(ptr);
 	    }
+	    *tree = NULL;
 	    returnCode(ERR);
 	}
 

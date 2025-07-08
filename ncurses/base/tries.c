@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020,2023 Thomas E. Dickey                                     *
+ * Copyright 1998-2009,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -38,8 +39,9 @@
 */
 
 #include <curses.priv.h>
+#include <tic.h>
 
-MODULE_ID("$Id: tries.c,v 1.30 2010/08/28 21:08:23 tom Exp $")
+MODULE_ID("$Id: tries.c,v 1.32 2023/06/24 15:36:23 tom Exp $")
 
 /*
  * Expand a keycode into the string that it corresponds to, returning null if
@@ -123,7 +125,7 @@ _nc_remove_string(TRIES ** tree, const char *string)
 {
     T((T_CALLED("_nc_remove_string(%p,%s)"), (void *) tree, _nc_visbuf(string)));
 
-    if (string == 0 || *string == 0)
+    if (!VALID_STRING(string) || *string == 0)
 	returnCode(FALSE);
 
     while (*tree != 0) {

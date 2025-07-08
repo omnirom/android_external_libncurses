@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
+ * Copyright 2019-2021,2022 Thomas E. Dickey                                *
+ * Copyright 1998-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -36,7 +37,7 @@
 #include <curses.priv.h>
 #include <ctype.h>
 
-MODULE_ID("$Id: lib_addch.c,v 1.129 2014/08/16 20:41:04 tom Exp $")
+MODULE_ID("$Id: lib_addch.c,v 1.141 2022/06/12 15:16:41 tom Exp $")
 
 static const NCURSES_CH_T blankchar = NewChar(BLANK_TEXT);
 
@@ -51,7 +52,7 @@ static const NCURSES_CH_T blankchar = NewChar(BLANK_TEXT);
  */
 
 /* Return bit mask for clearing color pair number if given ch has color */
-#define COLOR_MASK(ch) (~(attr_t)((ch) & A_COLOR ? A_COLOR : 0))
+#define COLOR_MASK(ch) (~(attr_t)(((ch) & A_COLOR) ? A_COLOR : 0))
 
 static NCURSES_INLINE NCURSES_CH_T
 render_char(WINDOW *win, NCURSES_CH_T ch)
@@ -117,14 +118,18 @@ _nc_render(WINDOW *win, NCURSES_CH_T ch)
 #endif
 
 static bool
-newline_forces_scroll(WINDOW *win, NCURSES_SIZE_T * ypos)
+newline_forces_scroll(WINDOW *win, NCURSES_SIZE_T *ypos)
 {
     bool result = FALSE;
 
-    if (*ypos >= win->_regtop && *ypos == win->_regbottom) {
-	*ypos = win->_regbottom;
-	result = TRUE;
-    } else {
+    if (*ypos >= win->_regtop && *ypos <= win->_regbottom) {
+	if (*ypos == win->_regbottom) {
+	    *ypos = win->_regbottom;
+	    result = TRUE;
+	} else if (*ypos < win->_maxy) {
+	    *ypos = (NCURSES_SIZE_T) (*ypos + 1);
+	}
+    } else if (*ypos < win->_maxy) {
 	*ypos = (NCURSES_SIZE_T) (*ypos + 1);
     }
     return result;
@@ -135,7 +140,7 @@ newline_forces_scroll(WINDOW *win, NCURSES_SIZE_T * ypos)
  * wrapped the cursor.  We don't do anything with this flag except set it when
  * wrapping, and clear it whenever we move the cursor.  If we try to wrap at
  * the lower-right corner of a window, we cannot move the cursor (since that
- * wouldn't be legal).  So we return an error (which is what SVr4 does). 
+ * wouldn't be legal).  So we return an error (which is what SVr4 does).
  * Unlike SVr4, we can successfully add a character to the lower-right corner
  * (Solaris 2.6 does this also, however).
  */
@@ -202,6 +207,20 @@ _nc_build_wch(WINDOW *win, ARG_CH_T ch)
     }
     WINDOW_EXT(win, addch_x) = x;
     WINDOW_EXT(win, addch_y) = y;
+
+    /*
+     * If the background character is a wide-character, that may interfere with
+     * processing multibyte characters in this function.
+     */
+    if (!is8bits(CharOf(CHDEREF(ch)))) {
+	if (WINDOW_EXT(win, addch_used) != 0) {
+	    /* discard the incomplete multibyte character */
+	    WINDOW_EXT(win, addch_used) = 0;
+	    TR(TRACE_VIRTPUT,
+	       ("Alert discarded incomplete multibyte"));
+	}
+	return 1;
+    }
 
     init_mb(state);
     buffer[WINDOW_EXT(win, addch_used)] = (char) CharOf(CHDEREF(ch));
@@ -270,11 +289,11 @@ waddch_literal(WINDOW *win, NCURSES_CH_T ch)
 
 		/* handle EILSEQ (i.e., when len >= -1) */
 		if (len == -1 && is8bits(CharOf(ch))) {
-		    int rc = OK;
 		    const char *s = NCURSES_SP_NAME(unctrl)
 		      (NCURSES_SP_ARGx (chtype) CharOf(ch));
 
 		    if (s[1] != '\0') {
+			int rc = OK;
 			while (*s != '\0') {
 			    rc = waddch(win, UChar(*s) | attr);
 			    if (rc != OK)
@@ -299,23 +318,32 @@ waddch_literal(WINDOW *win, NCURSES_CH_T ch)
      * adjustments.
      */
     if_WIDEC({
-	int len = wcwidth(CharOf(ch));
+	int len = _nc_wacs_width(CharOf(ch));
 	int i;
 	int j;
-	wchar_t *chars;
 
 	if (len == 0) {		/* non-spacing */
 	    if ((x > 0 && y >= 0)
 		|| (win->_maxx >= 0 && win->_cury >= 1)) {
-		if (x > 0 && y >= 0)
-		    chars = (win->_line[y].text[x - 1].chars);
-		else
-		    chars = (win->_line[y - 1].text[win->_maxx].chars);
+		NCURSES_CH_T *dst;
+		wchar_t *chars;
+		if (x > 0 && y >= 0) {
+		    for (j = x - 1; j >= 0; --j) {
+			if (!isWidecExt(win->_line[y].text[j])) {
+			    win->_curx = (NCURSES_SIZE_T) j;
+			    break;
+			}
+		    }
+		    dst = &(win->_line[y].text[j]);
+		} else {
+		    dst = &(win->_line[y - 1].text[win->_maxx]);
+		}
+		chars = dst->chars;
 		for (i = 0; i < CCHARW_MAX; ++i) {
 		    if (chars[i] == 0) {
 			TR(TRACE_VIRTPUT,
-			   ("added non-spacing %d: %x",
-			    x, (int) CharOf(ch)));
+			   ("adding non-spacing %s (level %d)",
+			    _tracech_t(CHREF(ch)), i));
 			chars[i] = CharOf(ch);
 			break;
 		    }
@@ -339,6 +367,7 @@ waddch_literal(WINDOW *win, NCURSES_CH_T ch)
 		    return ERR;
 		x = win->_curx;
 		y = win->_cury;
+		CHECK_POSITION(win, x, y);
 		line = win->_line + y;
 	    }
 	    /*
@@ -390,9 +419,9 @@ waddch_literal(WINDOW *win, NCURSES_CH_T ch)
   testwrapping:
     );
 
-    TR(TRACE_VIRTPUT, ("cell (%ld, %ld..%d) = %s",
-		       (long) win->_cury, (long) win->_curx, x - 1,
-		       _tracech_t(CHREF(ch))));
+    TR(TRACE_VIRTPUT, ("cell (%d, %d..%d) = %s",
+		       win->_cury, win->_curx, x - 1,
+		       _tracech_t(CHREF(line->text[win->_curx]))));
 
     if (x > win->_maxx) {
 	return wrap_to_next_line(win);
@@ -427,7 +456,7 @@ waddch_nosync(WINDOW *win, const NCURSES_CH_T ch)
 	       s[1] == 0
 	)
 	|| (
-	       (isprint((int)t) && !iscntrl((int)t))
+	       (isprint((int) t) && !iscntrl((int) t))
 #if USE_WIDEC_SUPPORT
 	       || ((sp == 0 || !sp->_legacy_coding) &&
 		   (WINDOW_EXT(win, addch_used)
@@ -443,6 +472,7 @@ waddch_nosync(WINDOW *win, const NCURSES_CH_T ch)
      */
     x = win->_curx;
     y = win->_cury;
+    CHECK_POSITION(win, x, y);
 
     switch (t) {
     case '\t':

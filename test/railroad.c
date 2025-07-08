@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2000-2011,2013 Free Software Foundation, Inc.              *
+ * Copyright 2019-2020,2022 Thomas E. Dickey                                *
+ * Copyright 2000-2013,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -29,7 +30,7 @@
 /*
  * Author: Thomas E. Dickey - 2000
  *
- * $Id: railroad.c,v 1.21 2013/09/28 22:02:17 tom Exp $
+ * $Id: railroad.c,v 1.26 2022/12/11 00:12:13 tom Exp $
  *
  * A simple demo of the termcap interface.
  */
@@ -113,7 +114,7 @@ static void
 ShowSign(char *string)
 {
     char *base = string;
-    int ch, first, last;
+    int first, last;
 
     if (moveit != 0) {
 	tputs(tgoto(moveit, 0, height - 1), 1, outc);
@@ -121,7 +122,7 @@ ShowSign(char *string)
     }
 
     while (*string != 0) {
-	ch = *string;
+	int ch = *string;
 	if (ch != ' ') {
 	    if (moveit != 0) {
 		for (first = length - 2; first >= (string - base); first--) {
@@ -187,10 +188,17 @@ railroad(char **args)
     NCURSES_CONST char *name = getenv("TERM");
     char buffer[1024];
     char area[1024], *ap = area;
+    int z;
 
     if (name == 0)
+#ifdef EXP_WIN32_DRIVER
+	name = "ms-terminal";
+#else
 	name = "dumb";
-    if (tgetent(buffer, name) >= 0) {
+#endif
+
+    InitAndCatch(z = tgetent(buffer, name), onsig);
+    if (z >= 0) {
 
 	wipeit = tgetstr("ce", &ap);
 	height = tgetnum("li");
@@ -220,8 +228,6 @@ railroad(char **args)
 
 	MyShowCursor(0);
 
-	CATCHALL(onsig);
-
 	while (*args) {
 	    ShowSign(*args++);
 	}
@@ -229,11 +235,44 @@ railroad(char **args)
     }
 }
 
+static void
+usage(int ok)
+{
+    static const char *msg[] =
+    {
+	"Usage: railroad [options]"
+	,""
+	,USAGE_COMMON
+    };
+    size_t n;
+
+    for (n = 0; n < SIZEOF(msg); n++)
+	fprintf(stderr, "%s\n", msg[n]);
+
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
+}
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
+
 int
 main(int argc, char *argv[])
 {
-    if (argc > 1) {
-	railroad(argv + 1);
+    int ch;
+
+    while ((ch = getopt(argc, argv, OPTS_COMMON)) != -1) {
+	switch (ch) {
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
+	default:
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
+	}
+    }
+
+    if (optind < argc) {
+	railroad(argv + optind);
     } else {
 	static char world[] = "Hello World";
 	static char *hello[] =
@@ -245,8 +284,7 @@ main(int argc, char *argv[])
 
 #else
 int
-main(int argc GCC_UNUSED,
-     char *argv[]GCC_UNUSED)
+main(void)
 {
     printf("This program requires termcap\n");
     exit(EXIT_FAILURE);

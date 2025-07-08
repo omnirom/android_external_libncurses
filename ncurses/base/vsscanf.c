@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2004,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020,2023 Thomas E. Dickey                                     *
+ * Copyright 1998-2004,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -38,14 +39,11 @@
 
 #if !HAVE_VSSCANF
 
-MODULE_ID("$Id: vsscanf.c,v 1.20 2012/02/22 22:26:58 tom Exp $")
+MODULE_ID("$Id: vsscanf.c,v 1.22 2023/09/23 18:48:57 tom Exp $")
 
 #if !(HAVE_VFSCANF || HAVE__DOSCAN)
 
 #include <ctype.h>
-
-#define L_SQUARE '['
-#define R_SQUARE ']'
 
 typedef enum {
     cUnknown
@@ -242,7 +240,7 @@ vsscanf(const char *str, const char *format, va_list ap)
 		    case sPercent:
 			if (format[n] == '%') {
 			    state = sUnknown;
-			} else if (format[n] == L_SQUARE) {
+			} else if (format[n] == L_BLOCK) {
 			    state = sLeft;
 			} else {
 			    state = sNormal;
@@ -257,7 +255,7 @@ vsscanf(const char *str, const char *format, va_list ap)
 			}
 			break;
 		    case sRange:
-			if (format[n] == R_SQUARE) {
+			if (format[n] == R_BLOCK) {
 			    state = sFinal;
 			    chunk = cRange;
 			}

@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1999-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright 2018-2022,2023 Thomas E. Dickey                                *
+ * Copyright 1999-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -42,7 +43,7 @@
 
 #include <tic.h>
 
-MODULE_ID("$Id: alloc_ttype.c,v 1.27 2013/06/08 16:54:50 tom Exp $")
+MODULE_ID("$Id: alloc_ttype.c,v 1.51 2023/09/09 23:15:53 tom Exp $")
 
 #if NCURSES_XNAMES
 /*
@@ -61,7 +62,7 @@ merge_names(char **dst, char **a, int na, char **b, int nb)
 	} else if (cmp > 0) {
 	    dst[n++] = *b++;
 	    nb--;
-	} else if (cmp == 0) {
+	} else {
 	    dst[n++] = *a;
 	    a++, b++;
 	    na--, nb--;
@@ -78,37 +79,59 @@ merge_names(char **dst, char **a, int na, char **b, int nb)
 }
 
 static bool
-find_name(char **table, int length, char *name)
+find_name(char **table, int item, int length, const char *name)
 {
-    while (length-- > 0) {
-	if (!strcmp(*table++, name)) {
-	    DEBUG(4, ("found name '%s'", name));
-	    return TRUE;
+    int n;
+    int result = -1;
+
+    for (n = item; n < length; ++n) {
+	if (!strcmp(table[n], name)) {
+	    DEBUG(4, ("found name '%s' @%d", name, n));
+	    result = n;
+	    break;
 	}
     }
-    DEBUG(4, ("did not find name '%s'", name));
-    return FALSE;
+    if (result < 0) {
+	DEBUG(4, ("did not find name '%s'", name));
+    }
+    return (result >= 0);
 }
 
 #define EXTEND_NUM(num, ext) \
+	DEBUG(4, ("extending " #num " from %d to %d", \
+	 to->num, (unsigned short) (to->num + (ext - to->ext)))); \
 	to->num = (unsigned short) (to->num + (ext - to->ext))
 
 static void
-realign_data(TERMTYPE *to, char **ext_Names,
+realign_data(TERMTYPE2 *to, char **ext_Names,
 	     int ext_Booleans,
 	     int ext_Numbers,
 	     int ext_Strings)
 {
     int n, m, base;
-    int limit = (to->ext_Booleans + to->ext_Numbers + to->ext_Strings);
+    int to_Booleans = to->ext_Booleans;
+    int to_Numbers = to->ext_Numbers;
+    int to_Strings = to->ext_Strings;
+    int to1, to2, from;
+
+    DEBUG(4, ("realign_data %d/%d/%d vs %d/%d/%d",
+	      ext_Booleans,
+	      ext_Numbers,
+	      ext_Strings,
+	      to->ext_Booleans,
+	      to->ext_Numbers,
+	      to->ext_Strings));
 
     if (to->ext_Booleans != ext_Booleans) {
+	to1 = 0;
+	to2 = to_Booleans + to1;
+	from = 0;
 	EXTEND_NUM(num_Booleans, ext_Booleans);
 	TYPE_REALLOC(NCURSES_SBOOL, to->num_Booleans, to->Booleans);
 	for (n = to->ext_Booleans - 1,
 	     m = ext_Booleans - 1,
 	     base = to->num_Booleans - (m + 1); m >= 0; m--) {
-	    if (find_name(to->ext_Names, limit, ext_Names[m])) {
+	    if (find_name(to->ext_Names, to1, to2, ext_Names[m + from])) {
 		to->Booleans[base + m] = to->Booleans[base + n--];
 	    } else {
 		to->Booleans[base + m] = FALSE;
@@ -118,12 +141,15 @@ realign_data(TERMTYPE *to, char **ext_Names,
     }
 
     if (to->ext_Numbers != ext_Numbers) {
+	to1 = to_Booleans;
+	to2 = to_Numbers + to1;
+	from = ext_Booleans;
 	EXTEND_NUM(num_Numbers, ext_Numbers);
-	TYPE_REALLOC(short, to->num_Numbers, to->Numbers);
+	TYPE_REALLOC(NCURSES_INT2, to->num_Numbers, to->Numbers);
 	for (n = to->ext_Numbers - 1,
 	     m = ext_Numbers - 1,
 	     base = to->num_Numbers - (m + 1); m >= 0; m--) {
-	    if (find_name(to->ext_Names, limit, ext_Names[m + ext_Booleans])) {
+	    if (find_name(to->ext_Names, to1, to2, ext_Names[m + from])) {
 		to->Numbers[base + m] = to->Numbers[base + n--];
 	    } else {
 		to->Numbers[base + m] = ABSENT_NUMERIC;
@@ -131,13 +157,17 @@ realign_data(TERMTYPE *to, char **ext_Names,
 	}
 	to->ext_Numbers = UShort(ext_Numbers);
     }
+
     if (to->ext_Strings != ext_Strings) {
+	to1 = to_Booleans + to_Numbers;
+	to2 = to_Strings + to1;
+	from = ext_Booleans + ext_Numbers;
 	EXTEND_NUM(num_Strings, ext_Strings);
 	TYPE_REALLOC(char *, to->num_Strings, to->Strings);
 	for (n = to->ext_Strings - 1,
 	     m = ext_Strings - 1,
 	     base = to->num_Strings - (m + 1); m >= 0; m--) {
-	    if (find_name(to->ext_Names, limit, ext_Names[m + ext_Booleans + ext_Numbers])) {
+	    if (find_name(to->ext_Names, to1, to2, ext_Names[m + from])) {
 		to->Strings[base + m] = to->Strings[base + n--];
 	    } else {
 		to->Strings[base + m] = ABSENT_STRING;
@@ -151,7 +181,7 @@ realign_data(TERMTYPE *to, char **ext_Names,
  * Returns the first index in ext_Names[] for the given token-type
  */
 static unsigned
-_nc_first_ext_name(TERMTYPE *tp, int token_type)
+_nc_first_ext_name(TERMTYPE2 *tp, int token_type)
 {
     unsigned first;
 
@@ -176,7 +206,7 @@ _nc_first_ext_name(TERMTYPE *tp, int token_type)
  * Returns the last index in ext_Names[] for the given token-type
  */
 static unsigned
-_nc_last_ext_name(TERMTYPE *tp, int token_type)
+_nc_last_ext_name(TERMTYPE2 *tp, int token_type)
 {
     unsigned last;
 
@@ -199,7 +229,7 @@ _nc_last_ext_name(TERMTYPE *tp, int token_type)
  * Lookup an entry from extended-names, returning -1 if not found
  */
 static int
-_nc_find_ext_name(TERMTYPE *tp, char *name, int token_type)
+_nc_find_ext_name(TERMTYPE2 *tp, char *name, int token_type)
 {
     unsigned j;
     unsigned first = _nc_first_ext_name(tp, token_type);
@@ -218,7 +248,7 @@ _nc_find_ext_name(TERMTYPE *tp, char *name, int token_type)
  * (e.g., Booleans[]).
  */
 static int
-_nc_ext_data_index(TERMTYPE *tp, int n, int token_type)
+_nc_ext_data_index(TERMTYPE2 *tp, int n, int token_type)
 {
     switch (token_type) {
     case BOOLEAN:
@@ -241,13 +271,14 @@ _nc_ext_data_index(TERMTYPE *tp, int n, int token_type)
  * data.
  */
 static bool
-_nc_del_ext_name(TERMTYPE *tp, char *name, int token_type)
+_nc_del_ext_name(TERMTYPE2 *tp, char *name, int token_type)
 {
-    int j;
-    int first, last;
+    int first;
 
     if ((first = _nc_find_ext_name(tp, name, token_type)) >= 0) {
-	last = (int) NUM_EXT_NAMES(tp) - 1;
+	int j;
+	int last = (int) NUM_EXT_NAMES(tp) - 1;
+
 	for (j = first; j < last; j++) {
 	    tp->ext_Names[j] = tp->ext_Names[j + 1];
 	}
@@ -285,7 +316,7 @@ _nc_del_ext_name(TERMTYPE *tp, char *name, int token_type)
  * index into the corresponding data array is returned.
  */
 static int
-_nc_ins_ext_name(TERMTYPE *tp, char *name, int token_type)
+_nc_ins_ext_name(TERMTYPE2 *tp, char *name, int token_type)
 {
     unsigned first = _nc_first_ext_name(tp, token_type);
     unsigned last = _nc_last_ext_name(tp, token_type);
@@ -319,7 +350,7 @@ _nc_ins_ext_name(TERMTYPE *tp, char *name, int token_type)
     case NUMBER:
 	tp->ext_Numbers++;
 	tp->num_Numbers++;
-	TYPE_REALLOC(short, tp->num_Numbers, tp->Numbers);
+	TYPE_REALLOC(NCURSES_INT2, tp->num_Numbers, tp->Numbers);
 	for (k = (unsigned) (tp->num_Numbers - 1); k > j; k--)
 	    tp->Numbers[k] = tp->Numbers[k - 1];
 	break;
@@ -340,12 +371,15 @@ _nc_ins_ext_name(TERMTYPE *tp, char *name, int token_type)
  * cancellation of a name that is inherited from another entry.
  */
 static void
-adjust_cancels(TERMTYPE *to, TERMTYPE *from)
+adjust_cancels(TERMTYPE2 *to, TERMTYPE2 *from)
 {
     int first = to->ext_Booleans + to->ext_Numbers;
     int last = first + to->ext_Strings;
     int j, k;
 
+    DEBUG(3, (T_CALLED("adjust_cancels(%s), from(%s)"),
+	      NonNull(to->term_names),
+	      NonNull(from->term_names)));
     for (j = first; j < last;) {
 	char *name = to->ext_Names[j];
 	int j_str = to->num_Strings - first - to->ext_Strings;
@@ -382,38 +416,47 @@ adjust_cancels(TERMTYPE *to, TERMTYPE *from)
 	    j++;
 	}
     }
+    DEBUG(3, (T_RETURN("")));
 }
 
 NCURSES_EXPORT(void)
-_nc_align_termtype(TERMTYPE *to, TERMTYPE *from)
+_nc_align_termtype(TERMTYPE2 *to, TERMTYPE2 *from)
 {
-    int na = (int) NUM_EXT_NAMES(to);
-    int nb = (int) NUM_EXT_NAMES(from);
-    int n;
-    bool same;
+    int na;
+    int nb;
     char **ext_Names;
-    int ext_Booleans, ext_Numbers, ext_Strings;
-    bool used_ext_Names = FALSE;
 
-    DEBUG(2, ("align_termtype to(%d:%s), from(%d:%s)", na, to->term_names,
-	      nb, from->term_names));
+    na = to ? ((int) NUM_EXT_NAMES(to)) : 0;
+    nb = from ? ((int) NUM_EXT_NAMES(from)) : 0;
 
-    if (na != 0 || nb != 0) {
+    DEBUG(2, (T_CALLED("_nc_align_termtype to(%d:%s), from(%d:%s)"),
+	      na, to ? NonNull(to->term_names) : "?",
+	      nb, from ? NonNull(from->term_names) : "?"));
+
+    if (to != NULL && from != NULL && (na != 0 || nb != 0)) {
+	int ext_Booleans, ext_Numbers, ext_Strings;
+	bool used_ext_Names = FALSE;
+
 	if ((na == nb)		/* check if the arrays are equivalent */
 	    &&(to->ext_Booleans == from->ext_Booleans)
 	    && (to->ext_Numbers == from->ext_Numbers)
 	    && (to->ext_Strings == from->ext_Strings)) {
+	    int n;
+	    bool same;
+
 	    for (n = 0, same = TRUE; n < na; n++) {
 		if (strcmp(to->ext_Names[n], from->ext_Names[n])) {
 		    same = FALSE;
 		    break;
 		}
 	    }
-	    if (same)
+	    if (same) {
+		DEBUG(2, (T_RETURN("")));
 		return;
+	    }
 	}
 	/*
-	 * This is where we pay for having a simple extension representation. 
+	 * This is where we pay for having a simple extension representation.
 	 * Allocate a new ext_Names array and merge the two ext_Names arrays
 	 * into it, updating to's counts for booleans, etc.  Fortunately we do
 	 * this only for the terminfo compiler (tic) and comparer (infocmp).
@@ -470,42 +513,201 @@ _nc_align_termtype(TERMTYPE *to, TERMTYPE *from)
 	if (!used_ext_Names)
 	    free(ext_Names);
     }
+    DEBUG(2, (T_RETURN("")));
 }
 #endif
 
-NCURSES_EXPORT(void)
-_nc_copy_termtype(TERMTYPE *dst, const TERMTYPE *src)
+#define srcINT 1
+#define dstINT 2
+
+/*
+ * TERMTYPE and TERMTYPE2 differ only with regard to the values in Numbers.
+ * Use 'mode' to decide which to use.
+ */
+static void
+copy_termtype(TERMTYPE2 *dst, const TERMTYPE2 *src, int mode)
 {
-#if NCURSES_XNAMES
     unsigned i;
+    int pass;
+    char *new_table;
+    size_t new_table_size;
+#if NCURSES_EXT_NUMBERS
+    short *oldptr = 0;
+    int *newptr = 0;
 #endif
 
+    DEBUG(2, (T_CALLED("copy_termtype(dst=%p, src=%p, mode=%d)"), (void *)
+	      dst, (const void *) src, mode));
     *dst = *src;		/* ...to copy the sizes and string-tables */
 
     TYPE_MALLOC(NCURSES_SBOOL, NUM_BOOLEANS(dst), dst->Booleans);
-    TYPE_MALLOC(short, NUM_NUMBERS(dst), dst->Numbers);
     TYPE_MALLOC(char *, NUM_STRINGS(dst), dst->Strings);
 
     memcpy(dst->Booleans,
 	   src->Booleans,
 	   NUM_BOOLEANS(dst) * sizeof(dst->Booleans[0]));
-    memcpy(dst->Numbers,
-	   src->Numbers,
-	   NUM_NUMBERS(dst) * sizeof(dst->Numbers[0]));
     memcpy(dst->Strings,
 	   src->Strings,
 	   NUM_STRINGS(dst) * sizeof(dst->Strings[0]));
 
-    /* FIXME: we probably should also copy str_table and ext_str_table,
-     * but tic and infocmp are not written to exploit that (yet).
-     */
+    new_table = NULL;
+    new_table_size = 0;
+    for (pass = 0; pass < 2; ++pass) {
+	size_t str_size = 0;
+	if (src->term_names != NULL) {
+	    if (pass) {
+		dst->term_names = new_table + str_size;
+		_nc_STRCPY(dst->term_names + str_size,
+			   src->term_names,
+			   new_table_size - str_size);
+	    }
+	    str_size += strlen(src->term_names) + 1;
+	}
+	for_each_string(i, src) {
+	    if (VALID_STRING(src->Strings[i])) {
+		if (pass) {
+		    _nc_STRCPY(new_table + str_size,
+			       src->Strings[i],
+			       new_table_size - str_size);
+		    dst->Strings[i] = new_table + str_size;
+		}
+		str_size += strlen(src->Strings[i]) + 1;
+	    }
+	}
+	if (pass) {
+	    dst->str_table = new_table;
+	} else {
+	    ++str_size;
+	    if ((new_table = malloc(str_size)) == NULL)
+		_nc_err_abort(MSG_NO_MEMORY);
+	    new_table_size = str_size;
+	}
+    }
+
+#if NCURSES_EXT_NUMBERS
+    if ((mode & dstINT) == 0) {
+	DEBUG(2, ("...convert int ->short"));
+	TYPE_MALLOC(short, NUM_NUMBERS(dst), oldptr);
+	((TERMTYPE *) dst)->Numbers = oldptr;
+    } else {
+	DEBUG(2, ("...copy without changing size"));
+	TYPE_MALLOC(int, NUM_NUMBERS(dst), newptr);
+	dst->Numbers = newptr;
+    }
+    if ((mode == srcINT) && (oldptr != 0)) {
+	DEBUG(2, ("...copy int ->short"));
+	for (i = 0; i < NUM_NUMBERS(dst); ++i) {
+	    if (src->Numbers[i] > MAX_OF_TYPE(short)) {
+		oldptr[i] = MAX_OF_TYPE(short);
+	    } else {
+		oldptr[i] = (short) src->Numbers[i];
+	    }
+	}
+    } else if ((mode == dstINT) && (newptr != 0)) {
+	DEBUG(2, ("...copy short ->int"));
+	for (i = 0; i < NUM_NUMBERS(dst); ++i) {
+	    newptr[i] = ((const short *) (src->Numbers))[i];
+	}
+    } else {
+	DEBUG(2, ("...copy %s without change",
+		  (mode & dstINT)
+		  ? "int"
+		  : "short"));
+	memcpy(dst->Numbers,
+	       src->Numbers,
+	       NUM_NUMBERS(dst) * ((mode & dstINT)
+				   ? sizeof(int)
+				   : sizeof(short)));
+    }
+#else
+    (void) mode;
+    TYPE_MALLOC(short, NUM_NUMBERS(dst), dst->Numbers);
+    memcpy(dst->Numbers,
+	   src->Numbers,
+	   NUM_NUMBERS(dst) * sizeof(dst->Numbers[0]));
+#endif
 
 #if NCURSES_XNAMES
     if ((i = NUM_EXT_NAMES(src)) != 0) {
 	TYPE_MALLOC(char *, i, dst->ext_Names);
 	memcpy(dst->ext_Names, src->ext_Names, i * sizeof(char *));
+
+	new_table = NULL;
+	new_table_size = 0;
+	for (pass = 0; pass < 2; ++pass) {
+	    size_t str_size = 0;
+	    char *raw_data = src->ext_str_table;
+	    if (raw_data != NULL) {
+		for (i = 0; i < src->ext_Strings; ++i) {
+		    size_t skip = strlen(raw_data) + 1;
+		    if (skip != 1) {
+			if (pass) {
+			    _nc_STRCPY(new_table + str_size,
+				       raw_data,
+				       new_table_size - str_size);
+			}
+			str_size += skip;
+			raw_data += skip;
+		    }
+		}
+	    }
+	    for (i = 0; i < NUM_EXT_NAMES(dst); ++i) {
+		if (VALID_STRING(src->ext_Names[i])) {
+		    if (pass) {
+			_nc_STRCPY(new_table + str_size,
+				   src->ext_Names[i],
+				   new_table_size - str_size);
+			dst->ext_Names[i] = new_table + str_size;
+		    }
+		    str_size += strlen(src->ext_Names[i]) + 1;
+		}
+	    }
+	    if (pass) {
+		dst->ext_str_table = new_table;
+	    } else {
+		++str_size;
+		if ((new_table = calloc(str_size, 1)) == NULL)
+		    _nc_err_abort(MSG_NO_MEMORY);
+		new_table_size = str_size;
+	    }
+	}
     } else {
 	dst->ext_Names = 0;
     }
 #endif
+    (void) new_table_size;
+    DEBUG(2, (T_RETURN("")));
 }
+
+NCURSES_EXPORT(void)
+_nc_copy_termtype(TERMTYPE *dst, const TERMTYPE *src)
+{
+    DEBUG(2, (T_CALLED("_nc_copy_termtype(dst=%p, src=%p)"), (void *) dst,
+	      (const void *) src));
+    copy_termtype((TERMTYPE2 *) dst, (const TERMTYPE2 *) src, 0);
+    DEBUG(2, (T_RETURN("")));
+}
+
+#if NCURSES_EXT_NUMBERS
+NCURSES_EXPORT(void)
+_nc_copy_termtype2(TERMTYPE2 *dst, const TERMTYPE2 *src)
+{
+    DEBUG(2, (T_CALLED("_nc_copy_termtype2(dst=%p, src=%p)"), (void *) dst,
+	      (const void *) src));
+    copy_termtype(dst, src, srcINT | dstINT);
+    DEBUG(2, (T_RETURN("")));
+}
+
+/*
+ * Use this for exporting the internal TERMTYPE2 to the legacy format used via
+ * the CUR macro by applications.
+ */
+NCURSES_EXPORT(void)
+_nc_export_termtype2(TERMTYPE *dst, const TERMTYPE2 *src)
+{
+    DEBUG(2, (T_CALLED("_nc_export_termtype2(dst=%p, src=%p)"), (void *)
+	      dst, (const void *) src));
+    copy_termtype((TERMTYPE2 *) dst, src, srcINT);
+    DEBUG(2, (T_RETURN("")));
+}
+#endif /* NCURSES_EXT_NUMBERS */

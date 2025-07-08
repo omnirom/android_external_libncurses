@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2003-2012,2014 Free Software Foundation, Inc.              *
+ * Copyright 2018-2021,2022 Thomas E. Dickey                                *
+ * Copyright 2003-2014,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,12 +27,13 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: background.c,v 1.15 2014/08/09 22:31:23 tom Exp $
+ * $Id: background.c,v 1.24 2022/12/10 22:28:50 tom Exp $
  */
 
 #define NEED_COLOR_CODE 1
 #define NEED_COLOR_NAME 1
 #include <color_name.h>
+#include <dump_window.h>
 
 static int default_bg = COLOR_BLACK;
 static int default_fg = COLOR_WHITE;
@@ -48,24 +50,24 @@ test_background(void)
     } else {
 	printw("pair 0 contains (%d,%d)\n", (int) f, (int) b);
     }
-    getch();
+    dump_window(stdscr);
 
     printw("Initializing pair 1 to red/%s\n", color_name(default_bg));
     init_pair(1, COLOR_RED, (NCURSES_COLOR_T) default_bg);
     bkgdset((chtype) (' ' | COLOR_PAIR(1)));
     printw("RED/BLACK\n");
-    getch();
+    dump_window(stdscr);
 
     printw("Initializing pair 2 to %s/blue\n", color_name(default_fg));
     init_pair(2, (NCURSES_COLOR_T) default_fg, COLOR_BLUE);
     bkgdset((chtype) (' ' | COLOR_PAIR(2)));
     printw("This line should be %s/blue\n", color_name(default_fg));
-    getch();
+    dump_window(stdscr);
 
     printw("Initializing pair 3 to %s/cyan (ACS_HLINE)\n", color_name(default_fg));
     init_pair(3, (NCURSES_COLOR_T) default_fg, COLOR_CYAN);
     printw("...and drawing a box which should be followed by lines\n");
-    bkgdset(ACS_HLINE | (attr_t) COLOR_PAIR(3));
+    bkgdset(ACS_HLINE | (chtype) COLOR_PAIR(3));
     /*
      * Characters from vt100 line-drawing should be mapped to line-drawing,
      * since A_ALTCHARSET is set in the background, and the character part
@@ -80,59 +82,60 @@ test_background(void)
     row = 7;
     mvprintw(row++, 10, "l");
     for (chr = 0; chr < 32; ++chr)
-	addch(' ');
+	AddCh(' ');
     printw("x\n");
     chr = 32;
     while (chr < 128) {
 	if ((chr % 32) == 0)
 	    mvprintw(row++, 10, "x");
-	addch((chtype) ((chr == 127) ? ' ' : chr));
+	AddCh((chr == 127) ? ' ' : chr);
 	if ((++chr % 32) == 0)
 	    printw("x\n");
     }
     mvprintw(row++, 10, "m");
     for (chr = 0; chr < 32; ++chr)
-	addch(' ');
+	AddCh(' ');
     printw("j\n");
-    getch();
+    dump_window(stdscr);
 
     bkgdset((chtype) (' ' | COLOR_PAIR(0)));
     printw("Default Colors\n");
-    getch();
+    dump_window(stdscr);
 
     printw("Resetting colors to pair 1\n");
     bkgdset((chtype) (' ' | COLOR_PAIR(1)));
     printw("This line should be red/%s\n", color_name(default_bg));
-    getch();
+    dump_window(stdscr);
 
     printw("Setting screen to pair 0\n");
     bkgd((chtype) (' ' | COLOR_PAIR(0)));
-    getch();
+    dump_window(stdscr);
 
     printw("Setting screen to pair 1\n");
     bkgd((chtype) (' ' | COLOR_PAIR(1)));
-    getch();
+    dump_window(stdscr);
 
     printw("Setting screen to pair 2\n");
     bkgd((chtype) (' ' | COLOR_PAIR(2)));
-    getch();
+    dump_window(stdscr);
 
     printw("Setting screen to pair 3\n");
     bkgd((chtype) (' ' | COLOR_PAIR(3)));
-    getch();
+    dump_window(stdscr);
 
     printw("Setting screen to pair 0\n");
     bkgd((chtype) (' ' | COLOR_PAIR(0)));
-    getch();
+    dump_window(stdscr);
 }
 
 static void
-usage(void)
+usage(int ok)
 {
     static const char *msg[] =
     {
 	"Usage: background [options]"
 	,""
+	,USAGE_COMMON
 	,"Options:"
 #if HAVE_ASSUME_DEFAULT_COLORS
 	," -a       invoke assume_default_colors, repeat to use in init_pair"
@@ -142,17 +145,21 @@ usage(void)
 	," -d       invoke use_default_colors, repeat to use in init_pair"
 #endif
 	," -f XXX   specify foreground color"
+	," -l FILE  log window-dumps to this file"
     };
     size_t n;
 
     for (n = 0; n < SIZEOF(msg); n++)
 	fprintf(stderr, "%s\n", msg[n]);
 
-    ExitProgram(EXIT_FAILURE);
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
 
 int
-main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
 #if HAVE_ASSUME_DEFAULT_COLORS
     int a_option = 0;
@@ -160,12 +167,12 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 #if HAVE_USE_DEFAULT_COLORS
     int d_option = 0;
 #endif
-    int n;
+    int ch;
 
     setlocale(LC_ALL, "");
 
-    while ((n = getopt(argc, argv, "ab:df:")) != -1) {
-	switch (n) {
+    while ((ch = getopt(argc, argv, OPTS_COMMON "ab:df:l:")) != -1) {
+	switch (ch) {
 #if HAVE_ASSUME_DEFAULT_COLORS
 	case 'a':
 	    ++a_option;
@@ -182,8 +189,16 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	case 'f':
 	    default_fg = color_code(optarg);
 	    break;
+	case 'l':
+	    if (!open_dump(optarg))
+		usage(FALSE);
+	    break;
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
 	default:
-	    usage();
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
 	}
     }
 #if HAVE_USE_DEFAULT_COLORS && HAVE_ASSUME_DEFAULT_COLORS
@@ -230,6 +245,6 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	getch();
     }
     endwin();
-
+    close_dump();
     ExitProgram(EXIT_SUCCESS);
 }

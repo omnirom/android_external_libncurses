@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2006-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright 2019-2022,2023 Thomas E. Dickey                                *
+ * Copyright 2006-2012,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -37,7 +38,7 @@
 
 #include <tic.h>
 
-MODULE_ID("$Id: entries.c,v 1.21 2012/05/05 20:33:44 tom Exp $")
+MODULE_ID("$Id: entries.c,v 1.35 2023/05/27 20:13:10 tom Exp $")
 
 /****************************************************************************
  *
@@ -63,30 +64,8 @@ MODULE_ID("$Id: entries.c,v 1.21 2012/05/05 20:33:44 tom Exp $")
 NCURSES_EXPORT_VAR(ENTRY *) _nc_head = 0;
 NCURSES_EXPORT_VAR(ENTRY *) _nc_tail = 0;
 
-NCURSES_EXPORT(void)
-_nc_free_entry(ENTRY * headp, TERMTYPE *tterm)
-/* free the allocated storage consumed by the given list entry */
-{
-    ENTRY *ep;
-
-    if ((ep = _nc_delink_entry(headp, tterm)) != 0) {
-	free(ep);
-    }
-}
-
-NCURSES_EXPORT(void)
-_nc_free_entries(ENTRY * headp)
-/* free the allocated storage consumed by list entries */
-{
-    (void) headp;		/* unused - _nc_head is altered here! */
-
-    while (_nc_head != 0) {
-	_nc_free_termtype(&(_nc_head->tterm));
-    }
-}
-
-NCURSES_EXPORT(ENTRY *)
-_nc_delink_entry(ENTRY * headp, TERMTYPE *tterm)
+static ENTRY *
+_nc_delink_entry(ENTRY * headp, const TERMTYPE2 *const tterm)
 /* delink the allocated storage for the given list entry */
 {
     ENTRY *ep, *last;
@@ -112,22 +91,63 @@ _nc_delink_entry(ENTRY * headp, TERMTYPE *tterm)
 }
 
 NCURSES_EXPORT(void)
+_nc_free_entry(ENTRY * headp, TERMTYPE2 *tterm)
+/* free the allocated storage consumed by the given list entry */
+{
+    ENTRY *ep;
+
+    if ((ep = _nc_delink_entry(headp, tterm)) != 0) {
+	free(ep);
+    }
+}
+
+NCURSES_EXPORT(void)
+_nc_free_entries(ENTRY * headp)
+/* free the allocated storage consumed by list entries */
+{
+    (void) headp;		/* unused - _nc_head is altered here! */
+
+    while (_nc_head != 0) {
+	_nc_free_termtype2(&(_nc_head->tterm));
+    }
+}
+
+NCURSES_EXPORT(void)
 _nc_leaks_tinfo(void)
 {
 #if NO_LEAKS
     char *s;
 #endif
 
-    T((T_CALLED("_nc_free_tinfo()")));
+    T((T_CALLED("_nc_leaks_tinfo()")));
 #if NO_LEAKS
-    _nc_free_tparm();
+    _nc_globals.leak_checking = TRUE;
+    _nc_free_tparm(cur_term);
     _nc_tgetent_leaks();
 
+#ifdef USE_PTHREADS
+    /*
+     * Discard any prescreen data which is not used for the current screen.
+     */
+    _nc_lock_global(screen);
+    {
+	PRESCREEN_LIST *p;
+	pthread_t id = GetThreadID();
+	for (p = _nc_prescreen.allocated; p != 0; p = p->next) {
+	    if (p->id == id && p->sp != CURRENT_SCREEN) {
+		FreeAndNull(p->sp);
+	    }
+	}
+    }
+    _nc_unlock_global(screen);
+#endif
     if (TerminalOf(CURRENT_SCREEN) != 0) {
 	del_curterm(TerminalOf(CURRENT_SCREEN));
     }
+    _nc_forget_prescr();
 
     _nc_comp_captab_leaks();
+    _nc_comp_userdefs_leaks();
     _nc_free_entries(_nc_head);
     _nc_get_type(0);
     _nc_first_name(0);
@@ -144,7 +164,8 @@ _nc_leaks_tinfo(void)
 	free(s);
 
 #ifdef TRACE
-    trace(0);
+    T((T_RETURN("")));
+    curses_trace(0);
     _nc_trace_buf(-1, (size_t) 0);
 #endif
 
@@ -156,7 +177,18 @@ _nc_leaks_tinfo(void)
 NCURSES_EXPORT(void)
 _nc_free_tinfo(int code)
 {
+    T((T_CALLED("_nc_free_tinfo(%d)"), code));
     _nc_leaks_tinfo();
     exit(code);
 }
 #endif
+
+NCURSES_EXPORT(void)
+exit_terminfo(int code)
+{
+    T((T_CALLED("exit_terminfo(%d)"), code));
+#if NO_LEAKS
+    _nc_leaks_tinfo();
+#endif
+    exit(code);
+}

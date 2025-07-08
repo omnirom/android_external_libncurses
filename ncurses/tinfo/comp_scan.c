@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+,* Copyright 2020-2022,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -50,7 +51,7 @@
 #include <ctype.h>
 #include <tic.h>
 
-MODULE_ID("$Id: comp_scan.c,v 1.102 2013/11/16 19:57:50 tom Exp $")
+MODULE_ID("$Id: comp_scan.c,v 1.122 2023/05/27 20:13:10 tom Exp $")
 
 /*
  * Maximum length of string capability we'll accept before raising an error.
@@ -111,6 +112,9 @@ static FILE *yyin;		/* scanner's input file descriptor */
 NCURSES_EXPORT(void)
 _nc_reset_input(FILE *fp, char *buf)
 {
+    TR(TRACE_DATABASE,
+       (T_CALLED("_nc_reset_input(fp=%p, buf=%p)"), (void *) fp, buf));
+
     pushtype = NO_PUSHBACK;
     if (pushname != 0)
 	pushname[0] = '\0';
@@ -120,6 +124,8 @@ _nc_reset_input(FILE *fp, char *buf)
     if (fp != 0)
 	_nc_curr_line = 0;
     _nc_curr_col = 0;
+
+    returnVoidDB;
 }
 
 /*
@@ -135,12 +141,38 @@ last_char(int from_end)
 
     while (len--) {
 	if (!isspace(UChar(bufptr[len]))) {
-	    if (from_end < (int) len)
+	    if (from_end <= (int) len)
 		result = bufptr[(int) len - from_end];
 	    break;
 	}
     }
     return result;
+}
+
+/*
+ * Read, like fgets(), but error-out if the input contains nulls.
+ */
+static int
+get_text(char *buffer, int length)
+{
+    int count = 0;
+    int limit = length - 1;
+
+    while (limit-- > 0) {
+	int ch = fgetc(yyin);
+
+	if (ch == '\0') {
+	    _nc_err_abort("This is not a text-file");
+	} else if (ch == EOF) {
+	    break;
+	}
+	++count;
+	*buffer++ = (char) ch;
+	if (ch == '\n')
+	    break;
+    }
+    *buffer = '\0';
+    return count;
 }
 
 /*
@@ -168,6 +200,8 @@ next_char(void)
 	if (result != 0) {
 	    FreeAndNull(result);
 	    FreeAndNull(pushname);
+	    bufptr = 0;
+	    bufstart = 0;
 	    allocated = 0;
 	}
 	/*
@@ -189,12 +223,11 @@ next_char(void)
 	 * quite hard to get completely right.  Try it and see.  If you
 	 * succeed, don't forget to hack push_back() correspondingly.
 	 */
-	size_t used;
 	size_t len;
 
 	do {
+	    size_t used = 0;
 	    bufstart = 0;
-	    used = 0;
 	    do {
 		if (used + (LEXBUFSIZ / 4) >= allocated) {
 		    allocated += (allocated + LEXBUFSIZ);
@@ -207,7 +240,7 @@ next_char(void)
 		if (used == 0)
 		    _nc_curr_file_pos = ftell(yyin);
 
-		if (fgets(result + used, (int) (allocated - used), yyin) != 0) {
+		if (get_text(result + used, (int) (allocated - used))) {
 		    bufstart = result;
 		    if (used == 0) {
 			if (_nc_curr_line == 0
@@ -223,6 +256,8 @@ next_char(void)
 		}
 		if ((bufptr = bufstart) != 0) {
 		    used = strlen(bufptr);
+		    if (used == 0)
+			return (EOF);
 		    while (iswhite(*bufptr)) {
 			if (*bufptr == '\t') {
 			    _nc_curr_col = (_nc_curr_col | 7) + 1;
@@ -267,7 +302,7 @@ push_back(int c)
 /* push a character back onto the input stream */
 {
     if (bufptr == bufstart)
-	_nc_syserr_abort("Can't backspace off beginning of line");
+	_nc_syserr_abort("cannot backspace off beginning of line");
     *--bufptr = (char) c;
     _nc_curr_col--;
 }
@@ -276,14 +311,16 @@ static long
 stream_pos(void)
 /* return our current character position in the input stream */
 {
-    return (yyin ? ftell(yyin) : (bufptr ? bufptr - bufstart : 0));
+    return (yyin ? ftell(yyin) : (bufptr ? (long) (bufptr - bufstart) : 0));
 }
 
 static bool
 end_of_stream(void)
 /* are we at end of input? */
 {
-    return ((yyin ? feof(yyin) : (bufptr && *bufptr == '\0'))
+    return ((yyin
+	     ? (feof(yyin) && (bufptr == NULL || *bufptr == '\0'))
+	     : (bufptr && *bufptr == '\0'))
 	    ? TRUE : FALSE);
 }
 
@@ -291,9 +328,11 @@ end_of_stream(void)
 static NCURSES_INLINE int
 eat_escaped_newline(int ch)
 {
-    if (ch == '\\')
-	while ((ch = next_char()) == '\n' || iswhite(ch))
-	    continue;
+    if (ch == '\\') {
+	while ((ch = next_char()) == '\n' || iswhite(ch)) {
+	    /* EMPTY */ ;
+	}
+    }
     return ch;
 }
 
@@ -363,6 +402,8 @@ _nc_get_token(bool silent)
     int old_col;
 #endif
 
+    DEBUG(3, (T_CALLED("_nc_get_token(silent=%d)"), silent));
+
     if (pushtype != NO_PUSHBACK) {
 	int retval = pushtype;
 
@@ -375,6 +416,7 @@ _nc_get_token(bool silent)
 	    pushname[0] = '\0';
 
 	/* currtok wasn't altered by _nc_push_token() */
+	DEBUG(3, (T_RETURN("%d"), retval));
 	return (retval);
     }
 
@@ -385,6 +427,7 @@ _nc_get_token(bool silent)
 	    if (_nc_curr_token.tk_name == tok_buf)
 		_nc_curr_token.tk_name = 0;
 	}
+	DEBUG(3, (T_RETURN("%d"), EOF));
 	return (EOF);
     }
 
@@ -393,7 +436,6 @@ _nc_get_token(bool silent)
     while ((ch = next_char()) == '\n' || iswhite(ch)) {
 	if (ch == '\n')
 	    had_newline = TRUE;
-	continue;
     }
 
     ch = eat_escaped_newline(ch);
@@ -418,8 +460,9 @@ _nc_get_token(bool silent)
 	    dot_flag = TRUE;
 	    DEBUG(8, ("dot-flag set"));
 
-	    while ((ch = next_char()) == '.' || iswhite(ch))
-		continue;
+	    while ((ch = next_char()) == '.' || iswhite(ch)) {
+		/* EMPTY */ ;
+	    }
 	}
 
 	if (ch == EOF) {
@@ -552,7 +595,7 @@ _nc_get_token(bool silent)
 		 * Grrr...what we ought to do here is barf, complaining that
 		 * the entry is malformed.  But because a couple of name fields
 		 * in the 8.2 termcap file end with |\, we just have to assume
-		 * it's termcap syntax.
+		 * it is termcap syntax.
 		 */
 		_nc_syntax = SYN_TERMCAP;
 		separator = ':';
@@ -560,8 +603,9 @@ _nc_get_token(bool silent)
 		/* throw away trailing /, *$/ */
 		for (--tok_ptr;
 		     iswhite(*tok_ptr) || *tok_ptr == ',';
-		     tok_ptr--)
-		    continue;
+		     tok_ptr--) {
+		    /* EMPTY */ ;
+		}
 		tok_ptr[1] = '\0';
 	    }
 
@@ -583,14 +627,15 @@ _nc_get_token(bool silent)
 	     */
 	    if (after_list != 0) {
 		if (!silent) {
-		    if (*after_list == '\0')
+		    if (*after_list == '\0' || strchr("|", after_list[1]) != NULL) {
 			_nc_warning("empty longname field");
-		    else if (strchr(after_list, ' ') == 0)
+		    } else if (strchr(after_list, ' ') == 0) {
 			_nc_warning("older tic versions may treat the description field as an alias");
+		    }
 		}
 	    } else {
 		after_list = tok_buf + strlen(tok_buf);
-		DEBUG(1, ("missing description"));
+		DEBUG(2, ("missing description"));
 	    }
 
 	    /*
@@ -669,7 +714,15 @@ _nc_get_token(bool silent)
 		    if (numchk == numbuf)
 			_nc_warning("no value given for `%s'", tok_buf);
 		    if ((*numchk != '\0') || (ch != separator))
-			_nc_warning("Missing separator");
+			_nc_warning("Missing separator for `%s'", tok_buf);
+		    if (number < 0)
+			_nc_warning("value of `%s' cannot be negative", tok_buf);
+		    if (number > MAX_OF_TYPE(NCURSES_INT2)) {
+			_nc_warning("limiting value of `%s' from %#lx to %#x",
+				    tok_buf,
+				    number, MAX_OF_TYPE(NCURSES_INT2));
+			number = MAX_OF_TYPE(NCURSES_INT2);
+		    }
 		}
 		_nc_curr_token.tk_name = tok_buf;
 		_nc_curr_token.tk_valnumber = (int) number;
@@ -757,6 +810,7 @@ _nc_get_token(bool silent)
 	       : "<null>"),
 	      type));
 
+    DEBUG(3, (T_RETURN("%d"), type));
     return (type);
 }
 
@@ -780,7 +834,7 @@ _nc_get_token(bool silent)
  */
 
 NCURSES_EXPORT(int)
-_nc_trans_string(char *ptr, char *last)
+_nc_trans_string(char *ptr, const char *const last)
 {
     int count = 0;
     int number = 0;
@@ -810,8 +864,6 @@ _nc_trans_string(char *ptr, char *last)
 	    }
 	    if (c == '?' && (_nc_syntax != SYN_TERMCAP)) {
 		*(ptr++) = '\177';
-		if (_nc_tracing)
-		    _nc_warning("Allow ^? as synonym for \\177");
 	    } else {
 		if ((c &= 037) == 0)
 		    c = 128;
@@ -823,8 +875,6 @@ _nc_trans_string(char *ptr, char *last)
 	    c = next_char();
 	    if (c == EOF)
 		_nc_err_abort(MSG_NO_INPUTS);
-
-#define isoctal(c) ((c) >= '0' && (c) <= '7')
 
 	    if (isoctal(c) || (strict_bsd && isdigit(c))) {
 		number = c - '0';
@@ -990,10 +1040,8 @@ _nc_push_token(int tokclass)
 NCURSES_EXPORT(void)
 _nc_panic_mode(char ch)
 {
-    int c;
-
     for (;;) {
-	c = next_char();
+	int c = next_char();
 	if (c == ch)
 	    return;
 	if (c == EOF)

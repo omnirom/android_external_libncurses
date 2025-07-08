@@ -1,5 +1,6 @@
 .\"***************************************************************************
-.\" Copyright (c) 2007,2010 Free Software Foundation, Inc.                   *
+.\" Copyright 2019-2023,2024 Thomas E. Dickey                                *
+.\" Copyright 2007-2015,2017 Free Software Foundation, Inc.                  *
 .\"                                                                          *
 .\" Permission is hereby granted, free of charge, to any person obtaining a  *
 .\" copy of this software and associated documentation files (the            *
@@ -26,57 +27,112 @@
 .\" authorization.                                                           *
 .\"***************************************************************************
 .\"
-.\" $Id: curs_legacy.3x,v 1.5 2010/12/04 18:38:55 tom Exp $
-.TH curs_legacy 3X ""
+.\" $Id: curs_legacy.3x,v 1.32 2024/03/16 15:35:01 tom Exp $
+.TH curs_legacy 3X 2024-03-16 "ncurses @NCURSES_MAJOR@.@NCURSES_MINOR@" "Library calls"
+.ie \n(.g \{\
+.ds `` \(lq
+.ds '' \(rq
+.\}
+.el \{\
+.ie t .ds `` ``
+.el   .ds `` ""
+.ie t .ds '' ''
+.el   .ds '' ""
+.\}
+.
+.de bP
+.ie n  .IP \(bu 4
+.el    .IP \(bu 2
+..
 .SH NAME
-getattrs \- get \fBcurses\fR cursor and window coordinates, attributes
+\fB\%getattrs\fP,
+\fB\%getbegx\fP,
+\fB\%getbegy\fP,
+\fB\%getcurx\fP,
+\fB\%getcury\fP,
+\fB\%getmaxx\fP,
+\fB\%getmaxy\fP,
+\fB\%getparx\fP,
+\fB\%getpary\fP \-
+get \fIcurses\fR cursor and window coordinates or attributes (legacy)
 .SH SYNOPSIS
-\fB#include <curses.h>\fR
-.sp
-\fBint getattrs(WINDOW *win);\fR
-.br
-\fBint getbegx(WINDOW *win);\fR
-.br
-\fBint getbegy(WINDOW *win);\fR
-.br
-\fBint getcurx(WINDOW *win);\fR
-.br
-\fBint getcury(WINDOW *win);\fR
-.br
-\fBint getmaxx(WINDOW *win);\fR
-.br
-\fBint getmaxy(WINDOW *win);\fR
-.br
-\fBint getparx(WINDOW *win);\fR
-.br
-\fBint getpary(WINDOW *win);\fR
-.br
+.nf
+\fB#include <curses.h>
+.PP
+\fBint getattrs(const WINDOW *\fIwin\fP);
+.PP
+\fBint getbegx(const WINDOW *\fIwin\fP);
+\fBint getbegy(const WINDOW *\fIwin\fP);
+.PP
+\fBint getcurx(const WINDOW *\fIwin\fP);
+\fBint getcury(const WINDOW *\fIwin\fP);
+.PP
+\fBint getmaxx(const WINDOW *\fIwin\fP);
+\fBint getmaxy(const WINDOW *\fIwin\fP);
+.PP
+\fBint getparx(const WINDOW *\fIwin\fP);
+\fBint getpary(const WINDOW *\fIwin\fP);
+.fi
 .SH DESCRIPTION
-The \fBgetbegy\fR and \fBgetbegx\fR functions return the same
-data as \fBgetbegyx\fR.
-.PP
-The \fBgetcury\fR and \fBgetcurx\fR functions return the same
-data as \fBgetyx\fR.
-.PP
-The \fBgetmaxy\fR and \fBgetmaxx\fR functions return the same
-data as \fBgetmaxyx\fR.
-.PP
-The \fBgetpary\fR and \fBgetparx\fR functions return the same
-data as \fBgetparyx\fR.
+These legacy functions are simpler to use
+than the X/Open \fIcurses\fP functions:
+.bP
+The \fB\%getattrs\fP function returns the same attribute data
+as \fB\%wattr_get\fP.
+.IP
+However, \fB\%getattrs\fP returns an integer (actually a \fB\%chtype\fP),
+while \fB\%wattr_get\fP returns the current color pair in a separate parameter.
+In the wide-character library configuration,
+color pairs may not fit into a \fB\%chtype\fP,
+so \fB\%wattr_get\fP is the only way to obtain the color information.
+.IP
+Because \fB\%getattrs\fP returns the attributes in a single parameter,
+it would not be possible for an application to distinguish that from
+\fBERR\fP (a \fI-1\fP).
+If the window parameter is null, \fB\%getattrs\fP
+returns \fB\%A_NORMAL\fP (zero).
+.bP
+The \fB\%getbegy\fP and \fB\%getbegx\fP functions return the same
+data as \fB\%getbegyx\fP.
+.bP
+The \fB\%getcury\fP and \fB\%getcurx\fP functions return the same
+data as \fB\%getyx\fP.
+.bP
+The \fB\%getmaxy\fP and \fB\%getmaxx\fP functions return the same
+data as \fB\%getmaxyx\fP.
+.bP
+The \fB\%getpary\fP and \fB\%getparx\fP functions return the same
+data as \fB\%getparyx\fP.
 .SH RETURN VALUE
-These functions return an integer,
-or ERR if the window parameter is null.
+Except as noted,
+these functions return an integer,
+or \fBERR\fP if the window parameter is null.
 .SH NOTES
-All of these interfaces are provided as macros and functions.
-The macros are suppressed (and only the functions provided)
-when \fBNCURSES_OPAQUE\fR is defined.
-The standard forms such as \fBgetyx\fP must be implemented as macros,
-and (in this implementation) are defined in terms of the functions
-described here,
-to avoid reliance on internal details of the WINDOW structure.
+All of these interfaces are implemented as macros and functions.
+The macros are suppressed
+(and only the functions provided)
+in an \*(``opaque\*(''
+.I \%ncurses
+build,
+which defines the preprocessor symbol
+.BR \%NCURSES_OPAQUE .
+See section \*(``ALTERNATE CONFIGURATIONS\*('' in \fB\%ncurses\fP(3X).
+.PP
+The standard forms such as \fB\%getyx\fP
+.I must
+be implemented as macros,
+and
+(in this implementation)
+are defined in terms of the functions described here,
+to avoid reliance on internal details of the \fI\%WINDOW\fP structure.
 .SH PORTABILITY
 These functions were supported on Version 7, BSD or System V implementations.
+None of those implementations checked the window parameter.
+.PP
+The \fB\%getattrs\fP function and macro are defined to return a (signed) integer
+for compatibility with those implementations
+although an unsigned type would have been more appropriate.
 .SH SEE ALSO
-\fBcurses\fR(3X),
-\fBcurs_getyx\fR(3X),
-\fBcurs_opaque\fR(3X)
+\fB\%curses\fP(3X),
+\fB\%curs_getyx\fP(3X),
+\fB\%curs_opaque\fP(3X)

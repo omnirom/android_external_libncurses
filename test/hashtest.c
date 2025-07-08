@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2010,2013 Free Software Foundation, Inc.              *
+ * Copyright 2019-2020,2022 Thomas E. Dickey                                *
+ * Copyright 1998-2013,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -30,7 +31,7 @@
  *
  * Generate timing statistics for vertical-motion optimization.
  *
- * $Id: hashtest.c,v 1.32 2013/04/27 19:50:17 tom Exp $
+ * $Id: hashtest.c,v 1.39 2022/12/04 00:40:11 tom Exp $
  */
 
 #include <test.priv.h>
@@ -82,7 +83,7 @@ genlines(int base)
     move(0, 0);
     for (i = 0; i < head_lines; i++)
 	for (j = 0; j < COLS; j++)
-	    addch(UChar((j % 8 == 0) ? ('A' + j / 8) : '-'));
+	    AddCh(UChar((j % 8 == 0) ? ('A' + j / 8) : '-'));
 
     move(head_lines, 0);
     for (i = head_lines; i < LINES - foot_lines; i++) {
@@ -90,13 +91,13 @@ genlines(int base)
 			     + LO_CHAR);
 	int hi = (extend_corner || (i < LINES - 1)) ? COLS : COLS - 1;
 	for (j = 0; j < hi; j++)
-	    addch(c);
+	    AddCh(c);
     }
 
     for (i = LINES - foot_lines; i < LINES; i++) {
 	move(i, 0);
 	for (j = 0; j < (extend_corner ? COLS : COLS - 1); j++)
-	    addch(UChar((j % 8 == 0) ? ('A' + j / 8) : '-'));
+	    AddCh(UChar((j % 8 == 0) ? ('A' + j / 8) : '-'));
     }
 
     scrollok(stdscr, TRUE);
@@ -149,49 +150,53 @@ run_test(bool optimized GCC_UNUSED)
 }
 
 static void
-usage(void)
+usage(int ok)
 {
     static const char *const tbl[] =
     {
 	"Usage: hashtest [options]"
 	,""
+	,USAGE_COMMON
 	,"Options:"
-	,"  -c      continuous (don't reset between refresh's)"
-	,"  -f num  leave 'num' lines constant for footer"
-	,"  -h num  leave 'num' lines constant for header"
-	,"  -l num  repeat test 'num' times"
-	,"  -n      test the normal optimizer"
-	,"  -o      test the hashed optimizer"
-	,"  -r      reverse the loops"
-	,"  -s      single-step"
-	,"  -x      assume lower-right corner extension"
+	," -c       continuous (don't reset between refresh's)"
+	," -F num   leave 'num' lines constant for footer"
+	," -H num   leave 'num' lines constant for header"
+	," -l num   repeat test 'num' times"
+	," -n       test the normal optimizer"
+	," -o       test the hashed optimizer"
+	," -r       reverse the loops"
+	," -s       single-step"
+	," -x       assume lower-right corner extension"
     };
     size_t n;
 
     for (n = 0; n < SIZEOF(tbl); n++)
 	fprintf(stderr, "%s\n", tbl[n]);
-    ExitProgram(EXIT_FAILURE);
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
 
 int
 main(int argc, char *argv[])
 {
-    int c;
+    int ch;
     int test_loops = 1;
     int test_normal = FALSE;
     int test_optimize = FALSE;
 
     setlocale(LC_ALL, "");
 
-    while ((c = getopt(argc, argv, "cf:h:l:norsx")) != -1) {
-	switch (c) {
+    while ((ch = getopt(argc, argv, OPTS_COMMON "cF:H:l:norsx")) != -1) {
+	switch (ch) {
 	case 'c':
 	    continuous = TRUE;
 	    break;
-	case 'f':
+	case 'F':
 	    foot_lines = atoi(optarg);
 	    break;
-	case 'h':
+	case 'H':
 	    head_lines = atoi(optarg);
 	    break;
 	case 'l':
@@ -213,8 +218,12 @@ main(int argc, char *argv[])
 	case 'x':
 	    extend_corner = TRUE;
 	    break;
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
 	default:
-	    usage();
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
 	}
     }
     if (!test_normal && !test_optimize) {
@@ -222,12 +231,10 @@ main(int argc, char *argv[])
 	test_optimize = TRUE;
     }
 #if USE_TRACE
-    trace(TRACE_TIMES);
+    curses_trace(TRACE_TIMES);
 #endif
 
-    CATCHALL(finish);		/* arrange interrupts to terminate */
-
-    (void) initscr();		/* initialize the curses library */
+    InitAndCatch(initscr(), finish);
     keypad(stdscr, TRUE);	/* enable keyboard mapping */
     (void) nonl();		/* tell curses not to do NL->CR/NL on output */
     (void) cbreak();		/* take input chars one at a time, no wait for \n */

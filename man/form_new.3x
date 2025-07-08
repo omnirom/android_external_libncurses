@@ -1,6 +1,6 @@
-'\" t
 .\"***************************************************************************
-.\" Copyright (c) 1998-2006,2010 Free Software Foundation, Inc.              *
+.\" Copyright 2018-2023,2024 Thomas E. Dickey                                *
+.\" Copyright 1998-2010,2015 Free Software Foundation, Inc.                  *
 .\"                                                                          *
 .\" Permission is hereby granted, free of charge, to any person obtaining a  *
 .\" copy of this software and associated documentation files (the            *
@@ -27,26 +27,28 @@
 .\" authorization.                                                           *
 .\"***************************************************************************
 .\"
-.\" $Id: form_new.3x,v 1.9 2010/12/04 18:40:45 tom Exp $
-.TH form_new 3X ""
+.\" $Id: form_new.3x,v 1.32 2024/03/16 15:35:01 tom Exp $
+.TH form_new 3X 2024-03-16 "ncurses @NCURSES_MAJOR@.@NCURSES_MINOR@" "Library calls"
 .SH NAME
-\fBform_new\fR \- create and destroy forms
+\fBnew_form\fP,
+\fBfree_form\fP \-
+create and destroy forms
 .SH SYNOPSIS
-\fB#include <form.h>\fR
-.br
-FORM *new_form(FIELD **fields);
-.br
-int free_form(FORM *form);
-.br
-.SH DESCRIPTION
-The function \fBnew_form\fR creates a new form connected to a specified field
-pointer array (which must be \fBNULL\fR-terminated).
+.nf
+\fB#include <form.h>
 .PP
-The function \fBfree_form\fR disconnects \fIform\fR from its field array
+\fBFORM *new_form(FIELD **\fIfields\fP);
+\fBint free_form(FORM *\fIform\fP);
+.fi
+.SH DESCRIPTION
+The function \fBnew_form\fP creates a new form connected to a specified field
+pointer array (which must be \fBNULL\fP-terminated).
+.PP
+The function \fBfree_form\fP disconnects \fIform\fP from its field array
 and frees the storage allocated for the form.
 .SH RETURN VALUE
-The function \fBnew_form\fR returns \fBNULL\fR on error.
-It sets errno according to the function's success:
+The function \fBnew_form\fP returns \fBNULL\fP on error.
+It sets \fBerrno\fP according to the function's success:
 .TP 5
 .B E_OK
 The routine succeeded.
@@ -60,7 +62,7 @@ The field is already connected to a form.
 .B E_SYSTEM_ERROR
 System error occurred, e.g., malloc failure.
 .PP
-The function \fBfree_form\fR returns one of the following:
+The function \fBfree_form\fP returns one of the following:
 .TP 5
 .B E_OK
 The routine succeeded.
@@ -70,14 +72,13 @@ Routine detected an incorrect or out-of-range argument.
 .TP 5
 .B E_POSTED
 The form has already been posted.
-.SH SEE ALSO
-\fBcurses\fR(3X), \fBform\fR(3X).
-.SH NOTES
-The header file \fB<form.h>\fR automatically includes the header file
-\fB<curses.h>\fR.
 .SH PORTABILITY
-These routines emulate the System V forms library.  They were not supported on
+These routines emulate the System V forms library.
+They were not supported on
 Version 7 or BSD versions.
 .SH AUTHORS
-Juergen Pfeifer.  Manual pages and adaptation for new curses by Eric
-S. Raymond.
+Juergen Pfeifer.
+Manual pages and adaptation for new curses by Eric S. Raymond.
+.SH SEE ALSO
+\fB\%curses\fP(3X),
+\fB\%form\fP(3X)

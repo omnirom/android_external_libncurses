@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020,2021 Thomas E. Dickey                                     *
+ * Copyright 1998-2010,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -42,7 +43,7 @@
 
 #include <curses.priv.h>
 
-MODULE_ID("$Id: lib_pad.c,v 1.46 2010/04/24 23:50:45 tom Exp $")
+MODULE_ID("$Id: lib_pad.c,v 1.50 2021/10/23 22:57:27 tom Exp $")
 
 NCURSES_EXPORT(WINDOW *)
 NCURSES_SP_NAME(newpad) (NCURSES_SP_DCLx int l, int c)
@@ -89,7 +90,7 @@ subpad(WINDOW *orig, int l, int c, int begy, int begx)
     T((T_CALLED("subpad(%d, %d)"), l, c));
 
     if (orig) {
-	if (!(orig->_flags & _ISPAD)
+	if (!IS_PAD(orig)
 	    || ((win = derwin(orig, l, c, begy, begx)) == NULL))
 	    returnWin(0);
     }
@@ -145,7 +146,7 @@ pnoutrefresh(WINDOW *win,
     if (win == 0)
 	returnCode(ERR);
 
-    if (!(win->_flags & _ISPAD))
+    if (!IS_PAD(win))
 	returnCode(ERR);
 
     sp = _nc_screen_of(win);
@@ -188,6 +189,12 @@ pnoutrefresh(WINDOW *win,
 
     T(("pad being refreshed"));
 
+#ifdef TRACE
+    if (USE_TRACEF(TRACE_UPDATE)) {
+	_tracedump("...pad", win);
+	_nc_unlock_global(tracef);
+    }
+#endif /* TRACE */
 #if USE_SCROLL_HINTS
     if (win->_pad._pad_y >= 0) {
 	displaced = pminrow - win->_pad._pad_y
@@ -289,7 +296,7 @@ pnoutrefresh(WINDOW *win,
 
     /*
      * Use the pad's current position, if it will be visible.
-     * If not, don't do anything; it's not an error.
+     * If not, don't do anything; it is not an error.
      */
     if (win->_leaveok == FALSE
 	&& win->_cury >= pminrow
@@ -327,7 +334,7 @@ pechochar(WINDOW *pad, const chtype ch)
     if (pad == 0)
 	returnCode(ERR);
 
-    if (!(pad->_flags & _ISPAD))
+    if (!IS_PAD(pad))
 	returnCode(wechochar(pad, ch));
 
     waddch(pad, ch);

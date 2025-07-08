@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2010,2011 Free Software Foundation, Inc.              *
+ * Copyright 2020,2022 Thomas E. Dickey                                     *
+ * Copyright 1998-2010,2011 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -47,7 +48,7 @@
 #define CUR SP_TERMTYPE
 #endif
 
-MODULE_ID("$Id: lib_slk.c,v 1.48 2011/03/05 21:21:52 tom Exp $")
+MODULE_ID("$Id: lib_slk.c,v 1.50 2022/08/20 18:29:22 tom Exp $")
 
 #ifdef USE_TERM_DRIVER
 #define NumLabels    InfoOf(SP_PARM).numlabels
@@ -186,8 +187,10 @@ _nc_slk_initialize(WINDOW *stwin, int cols)
 	|| SP_PARM->_slk->labcnt <= 0
 	|| (SP_PARM->_slk->ent = typeCalloc(slk_ent,
 					    (size_t) SP_PARM->_slk->labcnt))
-	== NULL)
+	== NULL) {
+	free(SP_PARM->_slk->ent);
 	returnCode(slk_failed(NCURSES_SP_ARG));
+    }
 
     max_length = (size_t) SP_PARM->_slk->maxlen;
     for (i = 0; i < SP_PARM->_slk->labcnt; i++) {

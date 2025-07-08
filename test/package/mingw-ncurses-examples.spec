@@ -1,17 +1,17 @@
 Summary: ncurses-examples - example/test programs from ncurses
 %?mingw_package_header
 
-%define AppProgram ncurses-examples
-%define AppVersion MAJOR.MINOR
-%define AppRelease YYYYMMDD
-# $Id: mingw-ncurses-examples.spec,v 1.3 2013/10/26 23:30:21 tom Exp $
+%global AppProgram ncurses-examples
+%global AppVersion MAJOR.MINOR
+%global AppRelease YYYYMMDD
+# $Id: mingw-ncurses-examples.spec,v 1.11 2023/02/25 23:10:34 tom Exp $
 Name: mingw32-ncurses6-examples
 Version: %{AppVersion}
 Release: %{AppRelease}
 License: X11
 Group: Development/Libraries
-Source: ncurses-examples-%{release}.tgz
-# URL: http://invisible-island.net/ncurses/
+URL: https://invisible-island.net/ncurses/%{AppProgram}.html
+Source: https://invisible-island.net/archives/%{AppProgram}/%{AppProgram}-%{release}.tgz
 
 BuildRequires:  mingw32-ncurses6
 
@@ -50,13 +50,20 @@ This package is used for testing ABI 6 with cross-compiles to MinGW.
 %prep
 
 # override location of bindir, e.g., to avoid conflict with pdcurses
-%global mingw32_bindir %{mingw32_exec_prefix}/bin/%{AppProgram} 
-%global mingw64_bindir %{mingw64_exec_prefix}/bin/%{AppProgram} 
+%global mingw32_bindir %{mingw32_exec_prefix}/bin/%{AppProgram}
+%global mingw64_bindir %{mingw64_exec_prefix}/bin/%{AppProgram}
+
+%global mingw32_datadir %{mingw32_datadir}/%{AppProgram}
+%global mingw64_datadir %{mingw64_datadir}/%{AppProgram}
+
+%global mingw32_libexec %{mingw32_libexecdir}/%{AppProgram}
+%global mingw64_libexec %{mingw64_libexecdir}/%{AppProgram}
 
 %define CFG_OPTS \\\
-	--disable-echo \\\
-	--enable-warnings \\\
-	--verbose
+        --enable-echo \\\
+        --enable-warnings \\\
+        --verbose \\\
+        --with-screen=ncursesw6
 
 %define debug_package %{nil}
 %setup -q -n ncurses-examples-%{release}
@@ -66,8 +73,9 @@ mkdir BUILD-W32
 pushd BUILD-W32
 CFLAGS="%{CC_NORMAL}" \
 CC=%{mingw32_cc} \
-%mingw32_configure %{CFG_OPTS}
-cp config.status /tmp/ming32-config.status
+NCURSES_CONFIG_SUFFIX=dev \
+%mingw32_configure %{CFG_OPTS} \
+        --datadir=%{mingw32_datadir}
 make
 popd
 
@@ -75,8 +83,8 @@ mkdir BUILD-W64
 pushd BUILD-W64
 CFLAGS="%{CC_NORMAL}" \
 CC=%{mingw64_cc} \
-%mingw64_configure %{CFG_OPTS}
-cp config.status /tmp/ming64-config.status
+%mingw64_configure %{CFG_OPTS} \
+        --datadir=%{mingw32_datadir}
 make
 popd
 
@@ -91,19 +99,26 @@ pushd BUILD-W64
 %{mingw64_make} install DESTDIR=$RPM_BUILD_ROOT
 popd
 
-%clean
-rm -rf $RPM_BUILD_ROOT
-
-%files
-%defattr(-,root,root,-)
-
 %files -n mingw32-ncurses6-examples
+%defattr(-,root,root,-)
 %{mingw32_bindir}/*
+%{mingw32_datadir}/*
+%{mingw32_libexec}/*
 
 %files -n mingw64-ncurses6-examples
+%defattr(-,root,root,-)
 %{mingw64_bindir}/*
+%{mingw64_datadir}/*
+%{mingw64_libexec}/*
 
 %changelog
+
+* Sat Feb 25 2023 Thomas Dickey
+- use libexecdir for programs rather than subdir of bindir
+- amend URLs per rpmlint
+
+* Sat Nov 16 2019 Thomas Dickey
+- modify clean-rule to work around Fedora NFS bugs.
 
 * Sat Oct 19 2013 Thomas E. Dickey
 - initial version

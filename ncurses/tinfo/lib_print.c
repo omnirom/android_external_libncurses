@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright 2018-2021,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2011,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -39,14 +40,14 @@
 #define CUR SP_TERMTYPE
 #endif
 
-MODULE_ID("$Id: lib_print.c,v 1.23 2012/02/22 22:34:31 tom Exp $")
+MODULE_ID("$Id: lib_print.c,v 1.31 2023/06/10 12:44:41 tom Exp $")
 
 NCURSES_EXPORT(int)
 NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
 /* ship binary character data to the printer via mc4/mc5/mc5p */
 {
     int result;
-    char *mybuf, *switchon;
+    char *mybuf = NULL, *switchon;
     size_t onsize, offsize;
     size_t need;
 
@@ -59,7 +60,7 @@ NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
     }
 
     if (prtr_non) {
-	switchon = TPARM_1(prtr_non, len);
+	switchon = TIPARM_1(prtr_non, len);
 	onsize = strlen(switchon);
 	offsize = 0;
     } else {
@@ -72,6 +73,7 @@ NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
 
     if (switchon == 0
 	|| (mybuf = typeMalloc(char, need + 1)) == 0) {
+	free(mybuf);
 	errno = ENOMEM;
 	return (ERR);
     }
@@ -88,14 +90,14 @@ NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
      * data has actually been shipped to the terminal.  If the write(2)
      * operation is truly atomic we're protected from this.
      */
-    result = (int) write(TerminalOf(SP_PARM)->Filedes, mybuf, need);
+    result = (int) write(SP_PARM->_ofd, mybuf, need);
 
     /*
      * By giving up our scheduler slot here we increase the odds that the
      * kernel will ship the contiguous clist items from the last write
      * immediately.
      */
-#ifndef __MINGW32__
+#ifndef _NC_WINDOWS
     (void) sleep(0);
 #endif
     free(mybuf);

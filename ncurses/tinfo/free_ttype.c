@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1999-2010,2011 Free Software Foundation, Inc.              *
+ * Copyright 2020-2022,2023 Thomas E. Dickey                                *
+ * Copyright 1999-2011,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -42,24 +43,51 @@
 
 #include <tic.h>
 
-MODULE_ID("$Id: free_ttype.c,v 1.15 2011/02/06 01:08:31 tom Exp $")
+MODULE_ID("$Id: free_ttype.c,v 1.22 2023/04/22 15:12:57 tom Exp $")
 
-NCURSES_EXPORT(void)
-_nc_free_termtype(TERMTYPE *ptr)
+static void
+really_free_termtype(TERMTYPE2 *ptr, bool freeStrings)
 {
-    T(("_nc_free_termtype(%s)", ptr->term_names));
+    T(("really_free_termtype(%s) %d", ptr->term_names, freeStrings));
 
-    FreeIfNeeded(ptr->str_table);
+    if (freeStrings) {
+	FreeIfNeeded(ptr->str_table);
+    }
     FreeIfNeeded(ptr->Booleans);
     FreeIfNeeded(ptr->Numbers);
     FreeIfNeeded(ptr->Strings);
 #if NCURSES_XNAMES
-    FreeIfNeeded(ptr->ext_str_table);
+    if (freeStrings) {
+	FreeIfNeeded(ptr->ext_str_table);
+    }
     FreeIfNeeded(ptr->ext_Names);
 #endif
     memset(ptr, 0, sizeof(TERMTYPE));
     _nc_free_entry(_nc_head, ptr);
 }
+
+NCURSES_EXPORT(void)
+_nc_free_termtype(TERMTYPE *ptr)
+{
+    really_free_termtype((TERMTYPE2 *) ptr, !NCURSES_EXT_NUMBERS);
+}
+
+/*
+ * These similar entrypoints are not used outside of ncurses.
+ */
+NCURSES_EXPORT(void)
+_nc_free_termtype1(TERMTYPE *ptr)
+{
+    really_free_termtype((TERMTYPE2 *) ptr, TRUE);
+}
+
+#if NCURSES_EXT_NUMBERS
+NCURSES_EXPORT(void)
+_nc_free_termtype2(TERMTYPE2 *ptr)
+{
+    really_free_termtype(ptr, TRUE);
+}
+#endif
 
 #if NCURSES_XNAMES
 NCURSES_EXPORT_VAR(bool) _nc_user_definable = TRUE;

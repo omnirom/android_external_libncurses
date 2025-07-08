@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2006-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright 2018-2022,2023 Thomas E. Dickey                                *
+ * Copyright 2006-2013,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,7 +27,7 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: movewindow.c,v 1.39 2013/05/04 19:41:02 tom Exp $
+ * $Id: movewindow.c,v 1.54 2023/05/27 20:13:10 tom Exp $
  *
  * Demonstrate move functions for windows and derived windows from the curses
  * library.
@@ -45,16 +46,13 @@ TODO:
  */
 
 #include <test.priv.h>
-#include <stdarg.h>
+
+#if HAVE_MVDERWIN && HAVE_MVWIN
+
+#include <popup_msg.h>
 
 #ifdef HAVE_XCURSES
 #undef derwin
-#endif
-
-#ifdef NCURSES_VERSION
-#define CONST_FMT const
-#else
-#define CONST_FMT		/* nothing */
 #endif
 
 #undef LINE_MAX
@@ -73,8 +71,8 @@ typedef struct {
     WINDOW *child;		/* the actual value */
 } FRAME;
 
-static void head_line(CONST_FMT char *fmt,...) GCC_PRINTFLIKE(1, 2);
-static void tail_line(CONST_FMT char *fmt,...) GCC_PRINTFLIKE(1, 2);
+static void head_line(CONST_FMT char *fmt, ...) GCC_PRINTFLIKE(1, 2);
+static void tail_line(CONST_FMT char *fmt, ...) GCC_PRINTFLIKE(1, 2);
 
 static unsigned num_windows;
 static FRAME *all_windows;
@@ -102,6 +100,8 @@ message(int lineno, CONST_FMT char *fmt, va_list argp)
 	vsprintf(buffer, fmt, argp);
 	addstr(buffer);
     }
+#elif defined(HAVE_VW_PRINTW)
+    vw_printw(stdscr, fmt, argp);
 #else
     vwprintw(stdscr, fmt, argp);
 #endif
@@ -111,7 +111,7 @@ message(int lineno, CONST_FMT char *fmt, va_list argp)
 }
 
 static void
-head_line(CONST_FMT char *fmt,...)
+head_line(CONST_FMT char *fmt, ...)
 {
     va_list argp;
 
@@ -121,7 +121,7 @@ head_line(CONST_FMT char *fmt,...)
 }
 
 static void
-tail_line(CONST_FMT char *fmt,...)
+tail_line(CONST_FMT char *fmt, ...)
 {
     va_list argp;
 
@@ -190,6 +190,7 @@ selectcell(WINDOW *parent,
 	    moved = TRUE;
 	    break;
 	case QUIT:
+	    /* FALLTHRU */
 	case ESCAPE:
 	    return ((PAIR *) 0);
 #ifdef NCURSES_MOUSE_VERSION
@@ -211,8 +212,8 @@ selectcell(WINDOW *parent,
 		    break;
 		}
 	    }
-	    /* FALLTHRU */
 #endif
+	    /* FALLTHRU */
 	default:
 	    res.y = uli + i;
 	    res.x = ulj + j;
@@ -323,6 +324,7 @@ add_window(WINDOW *parent, WINDOW *child)
 	all_windows = typeRealloc(FRAME, need, all_windows);
 	if (!all_windows)
 	    failed("add_window");
+	have = need;
     }
     all_windows[num_windows].parent = parent;
     all_windows[num_windows].child = child;
@@ -330,7 +332,7 @@ add_window(WINDOW *parent, WINDOW *child)
 }
 
 static int
-window2num(WINDOW *win)
+window2num(const WINDOW *const win)
 {
     int n;
     int result = -1;
@@ -406,7 +408,7 @@ prev_window(WINDOW *win)
 }
 
 static void
-recur_move_window(WINDOW *parent, int dy, int dx)
+recur_move_window(const WINDOW *const parent, int dy, int dx)
 {
     unsigned n;
 
@@ -637,7 +639,7 @@ show_help(WINDOW *current)
 	int	key;
 	CONST_FMT char * msg;
     } help[] = {
-	{ '?',		"Show this screen" },
+	{ HELP_KEY_1,	"Show this screen" },
 	{ 'b',		"Draw a box inside the current window" },
 	{ 'c',		"Create a new window" },
 	{ 'd',		"Create a new derived window" },
@@ -654,28 +656,61 @@ show_help(WINDOW *current)
     };
     /* *INDENT-ON* */
 
-    WINDOW *mywin = newwin(LINES, COLS, 0, 0);
-    int row;
+    char **msgs = typeCalloc(char *, SIZEOF(help) + 1);
+    size_t n;
 
-    for (row = 0; row < LINES - 2 && row < (int) SIZEOF(help); ++row) {
-	wmove(mywin, row + 1, 1);
-	wprintw(mywin, "%s", keyname(help[row].key));
-	wmove(mywin, row + 1, 20);
-	wprintw(mywin, "%s", help[row].msg);
+    for (n = 0; n < SIZEOF(help); ++n) {
+	size_t need = (21 + strlen(help[n].msg));
+	msgs[n] = typeMalloc(char, need);
+	_nc_SPRINTF(msgs[n], _nc_SLIMIT(need)
+		    "%-20s%s", keyname(help[n].key), help[n].msg);
     }
-    box_inside(mywin);
-    wmove(mywin, 1, 1);
-    wgetch(mywin);
-    delwin(mywin);
-    refresh_all(current);
+    popup_msg2(current, msgs);
+    for (n = 0; n < SIZEOF(help); ++n) {
+	free(msgs[n]);
+    }
+    free(msgs);
 }
 
+static void
+usage(int ok)
+{
+    static const char *msg[] =
+    {
+	"Usage: movewindow [options]"
+	,""
+	,USAGE_COMMON
+    };
+    size_t n;
+
+    for (n = 0; n < SIZEOF(msg); n++)
+	fprintf(stderr, "%s\n", msg[n]);
+
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
+}
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
+
 int
-main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
     WINDOW *current_win;
     int ch;
     bool done = FALSE;
+
+    while ((ch = getopt(argc, argv, OPTS_COMMON)) != -1) {
+	switch (ch) {
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
+	default:
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
+	}
+    }
+    if (optind < argc)
+	usage(FALSE);
 
     initscr();
     cbreak();
@@ -695,7 +730,7 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	getyx(current_win, y, x);
 
 	switch (ch) {
-	case '?':
+	case HELP_KEY_1:
 	    show_help(current_win);
 	    break;
 	case 'b':
@@ -762,5 +797,16 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	wmove(current_win, 0, 0);
     }
     endwin();
+#if NO_LEAKS
+    free(all_windows);
+#endif
     ExitProgram(EXIT_SUCCESS);
 }
+#else
+int
+main(void)
+{
+    printf("This program requires the curses mvderwin and mvwin functions\n");
+    ExitProgram(EXIT_FAILURE);
+}
+#endif

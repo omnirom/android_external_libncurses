@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2014,2015 Free Software Foundation, Inc.              *
+ * Copyright 2019-2020,2022 Thomas E. Dickey                                *
+ * Copyright 1998-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -33,7 +34,7 @@
  * modified 10-18-89 for curses (jrl)
  * 10-18-89 added signal handling
  *
- * $Id: gdc.c,v 1.44 2015/07/04 21:28:28 tom Exp $
+ * $Id: gdc.c,v 1.57 2022/12/04 00:40:11 tom Exp $
  */
 
 #include <test.priv.h>
@@ -66,7 +67,7 @@ sighndl(int signo)
     signal(signo, sighndl);
     sigtermed = signo;
     if (redirected) {
-	endwin();
+	stop_curses();
 	ExitProgram(EXIT_FAILURE);
     }
 }
@@ -76,7 +77,7 @@ check_term(void)
 {
     if (sigtermed) {
 	(void) standend();
-	endwin();
+	stop_curses();
 	fprintf(stderr, "gdc terminated by signal %d\n", sigtermed);
 	ExitProgram(EXIT_FAILURE);
     }
@@ -86,7 +87,6 @@ static void
 drawbox(bool scrolling)
 {
     chtype bottom[XLENGTH + 1];
-    int n;
 
     if (hascolor)
 	(void) attrset(AttrArg(COLOR_PAIR(PAIR_FRAMES), 0));
@@ -97,6 +97,7 @@ drawbox(bool scrolling)
 
     MvAddCh(YBASE + YDEPTH, XBASE - 1, ACS_LLCORNER);
     if ((mvinchnstr(YBASE + YDEPTH, XBASE, bottom, XLENGTH)) != ERR) {
+	int n;
 	for (n = 0; n < XLENGTH; n++) {
 	    if (!scrolling)
 		bottom[n] &= ~A_COLOR;
@@ -149,23 +150,27 @@ set(int t, int n)
 }
 
 static void
-usage(void)
+usage(int ok)
 {
     static const char *msg[] =
     {
 	"Usage: gdc [options] [count]"
 	,""
+	,USAGE_COMMON
 	,"Options:"
-	,"  -n  redirect input to /dev/null"
-	,"  -s  scroll each number into place, rather than flipping"
-	,"  -t hh:mm:ss specify starting time (default is ``now'')"
+#if HAVE_USE_DEFAULT_COLORS
+	," -d       invoke use_default_colors"
+#endif
+	," -n       redirect input to /dev/null"
+	," -s       scroll each number into place, rather than flipping"
+	," -t TIME  specify starting time as hh:mm:ss (default is ``now'')"
 	,""
 	,"If you specify a count, gdc runs for that number of seconds"
     };
     unsigned j;
     for (j = 0; j < SIZEOF(msg); j++)
 	fprintf(stderr, "%s\n", msg[j]);
-    ExitProgram(EXIT_FAILURE);
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
 
 static time_t
@@ -179,14 +184,14 @@ parse_time(const char *value)
 
     if (sscanf(value, "%d:%d:%d%c", &hh, &mm, &ss, &c) != 3) {
 	if (sscanf(value, "%02d%02d%02d%c", &hh, &mm, &ss, &c) != 3) {
-	    usage();
+	    usage(FALSE);
 	}
     }
 
     if ((hh < 0) || (hh >= 24) ||
 	(mm < 0) || (mm >= 60) ||
 	(ss < 0) || (ss >= 60)) {
-	usage();
+	usage(FALSE);
     }
 
     /* adjust so that the localtime in the main loop will give usable time */
@@ -200,10 +205,13 @@ parse_time(const char *value)
 
     if (tm->tm_hour != hh) {
 	fprintf(stderr, "Cannot find local time for %s!\n", value);
-	usage();
+	usage(FALSE);
     }
     return result;
 }
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
 
 int
 main(int argc, char *argv[])
@@ -211,20 +219,26 @@ main(int argc, char *argv[])
     time_t now;
     struct tm *tm;
     long t, a;
-    int i, j, s, k;
+    int i, j, s, k, ch;
     int count = 0;
     FILE *ofp = stdout;
     FILE *ifp = stdin;
     bool smooth = FALSE;
     bool stages = FALSE;
     time_t starts = 0;
+#if HAVE_USE_DEFAULT_COLORS
+    bool d_option = FALSE;
+#endif
 
     setlocale(LC_ALL, "");
 
-    CATCHALL(sighndl);
-
-    while ((k = getopt(argc, argv, "nst:")) != -1) {
-	switch (k) {
+    while ((ch = getopt(argc, argv, OPTS_COMMON "dnst:")) != -1) {
+	switch (ch) {
+#if HAVE_USE_DEFAULT_COLORS
+	case 'd':
+	    d_option = TRUE;
+	    break;
+#endif
 	case 'n':
 	    ifp = fopen("/dev/null", "r");
 	    redirected = TRUE;
@@ -235,28 +249,35 @@ main(int argc, char *argv[])
 	case 't':
 	    starts = parse_time(optarg);
 	    break;
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
 	default:
-	    usage();
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
 	}
     }
     if (optind < argc) {
 	count = atoi(argv[optind++]);
 	assert(count >= 0);
+	if (optind < argc)
+	    usage(FALSE);
     }
-    if (optind < argc)
-	usage();
 
-    if (redirected) {
-	char *name = getenv("TERM");
-	if (name == 0
-	    || newterm(name, ofp, ifp) == 0) {
-	    fprintf(stderr, "cannot open terminal\n");
-	    ExitProgram(EXIT_FAILURE);
+    InitAndCatch({
+	if (redirected) {
+	    char *name = getenv("TERM");
+	    if (name == 0
+		|| newterm(name, ofp, ifp) == 0) {
+		fprintf(stderr, "cannot open terminal\n");
+		ExitProgram(EXIT_FAILURE);
+	    }
+	} else {
+	    initscr();
 	}
-
-    } else {
-	initscr();
     }
+    ,sighndl);
+
     cbreak();
     noecho();
     nodelay(stdscr, 1);
@@ -268,7 +289,7 @@ main(int argc, char *argv[])
 	short bg = COLOR_BLACK;
 	start_color();
 #if HAVE_USE_DEFAULT_COLORS
-	if (use_default_colors() == OK)
+	if (d_option && (use_default_colors() == OK))
 	    bg = -1;
 #endif
 	init_pair(PAIR_DIGITS, COLOR_BLACK, COLOR_RED);
@@ -379,7 +400,7 @@ main(int argc, char *argv[])
 	}
 
 	/* this depends on the detailed format of ctime(3) */
-	(void) strncpy(buf, ctime(&now), (size_t) 30);
+	_nc_STRNCPY(buf, ctime(&now), (size_t) 30);
 	{
 	    char *d2 = buf + 10;
 	    char *s2 = buf + 19;
@@ -435,6 +456,6 @@ main(int argc, char *argv[])
 	}
     } while (--count);
     (void) standend();
-    endwin();
+    stop_curses();
     ExitProgram(EXIT_SUCCESS);
 }

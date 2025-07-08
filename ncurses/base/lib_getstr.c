@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2011 Free Software Foundation, Inc.              *
+ * Copyright 2018-2021,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2011,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -38,9 +39,10 @@
 **
 */
 
+#define NEED_KEY_EVENT
 #include <curses.priv.h>
 
-MODULE_ID("$Id: lib_getstr.c,v 1.30 2011/10/22 16:31:35 tom Exp $")
+MODULE_ID("$Id: lib_getstr.c,v 1.39 2023/04/29 19:00:17 tom Exp $")
 
 /*
  * This wipes out the last character, no matter whether it was a tab, control
@@ -76,7 +78,7 @@ wgetnstr_events(WINDOW *win,
 {
     SCREEN *sp = _nc_screen_of(win);
     TTY buf;
-    bool oldnl, oldecho, oldraw, oldcbreak;
+    TTY_FLAGS save_flags;
     char erasec;
     char killc;
     char *oldstr;
@@ -85,19 +87,18 @@ wgetnstr_events(WINDOW *win,
 
     T((T_CALLED("wgetnstr(%p,%p,%d)"), (void *) win, (void *) str, maxlen));
 
-    if (!win)
+    if (!win || !str)
 	returnCode(ERR);
+
+    maxlen = _nc_getstr_limit(maxlen);
 
     NCURSES_SP_NAME(_nc_get_tty_mode) (NCURSES_SP_ARGx &buf);
 
-    oldnl = sp->_nl;
-    oldecho = sp->_echo;
-    oldraw = sp->_raw;
-    oldcbreak = sp->_cbreak;
+    save_flags = sp->_tty_flags;
     NCURSES_SP_NAME(nl) (NCURSES_SP_ARG);
     NCURSES_SP_NAME(noecho) (NCURSES_SP_ARG);
-    NCURSES_SP_NAME(noraw) (NCURSES_SP_ARG);
-    NCURSES_SP_NAME(cbreak) (NCURSES_SP_ARG);
+    if (!save_flags._raw)
+	NCURSES_SP_NAME(cbreak) (NCURSES_SP_ARG);
 
     erasec = NCURSES_SP_NAME(erasechar) (NCURSES_SP_ARG);
     killc = NCURSES_SP_NAME(killchar) (NCURSES_SP_ARG);
@@ -111,7 +112,7 @@ wgetnstr_events(WINDOW *win,
     while ((ch = wgetch_events(win, evl)) != ERR) {
 	/*
 	 * Some terminals (the Wyse-50 is the most common) generate
-	 * a \n from the down-arrow key.  With this logic, it's the
+	 * a \n from the down-arrow key.  With this logic, it is the
 	 * user's choice whether to set kcud=\n for wgetch();
 	 * terminating *getstr() with \n should work either way.
 	 */
@@ -119,7 +120,7 @@ wgetnstr_events(WINDOW *win,
 	    || ch == '\r'
 	    || ch == KEY_DOWN
 	    || ch == KEY_ENTER) {
-	    if (oldecho == TRUE
+	    if (save_flags._echo == TRUE
 		&& win->_cury == win->_maxy
 		&& win->_scroll)
 		wechochar(win, (chtype) '\n');
@@ -135,18 +136,18 @@ wgetnstr_events(WINDOW *win,
 #endif
 	if (ch == erasec || ch == KEY_LEFT || ch == KEY_BACKSPACE) {
 	    if (str > oldstr) {
-		str = WipeOut(win, y, x, oldstr, str, oldecho);
+		str = WipeOut(win, y, x, oldstr, str, save_flags._echo);
 	    }
 	} else if (ch == killc) {
 	    while (str > oldstr) {
-		str = WipeOut(win, y, x, oldstr, str, oldecho);
+		str = WipeOut(win, y, x, oldstr, str, save_flags._echo);
 	    }
 	} else if (ch >= KEY_MIN
-		   || (maxlen >= 0 && str - oldstr >= maxlen)) {
+		   || (str - oldstr >= maxlen)) {
 	    NCURSES_SP_NAME(beep) (NCURSES_SP_ARG);
 	} else {
 	    *str++ = (char) ch;
-	    if (oldecho == TRUE) {
+	    if (save_flags._echo == TRUE) {
 		int oldy = win->_cury;
 		if (waddch(win, (chtype) ch) == ERR) {
 		    /*
@@ -156,9 +157,9 @@ wgetnstr_events(WINDOW *win,
 		     */
 		    win->_flags &= ~_WRAPPED;
 		    waddch(win, (chtype) ' ');
-		    str = WipeOut(win, y, x, oldstr, str, oldecho);
+		    str = WipeOut(win, y, x, oldstr, str, save_flags._echo);
 		    continue;
-		} else if (win->_flags & _WRAPPED) {
+		} else if (IS_WRAPPED(win)) {
 		    /*
 		     * If the last waddch forced a wrap &
 		     * scroll, adjust our reference point
@@ -187,11 +188,7 @@ wgetnstr_events(WINDOW *win,
     /* Restore with a single I/O call, to fix minor asymmetry between
      * raw/noraw, etc.
      */
-    sp->_nl = oldnl;
-    sp->_echo = oldecho;
-    sp->_raw = oldraw;
-    sp->_cbreak = oldcbreak;
-
+    sp->_tty_flags = save_flags;
     NCURSES_SP_NAME(_nc_set_tty_mode) (NCURSES_SP_ARGx &buf);
 
     *str = '\0';

@@ -1,6 +1,6 @@
-'\" t
 .\"***************************************************************************
-.\" Copyright (c) 1998-2006,2010 Free Software Foundation, Inc.              *
+.\" Copyright 2018-2023,2024 Thomas E. Dickey                                *
+.\" Copyright 1998-2010,2015 Free Software Foundation, Inc.                  *
 .\"                                                                          *
 .\" Permission is hereby granted, free of charge, to any person obtaining a  *
 .\" copy of this software and associated documentation files (the            *
@@ -27,38 +27,39 @@
 .\" authorization.                                                           *
 .\"***************************************************************************
 .\"
-.\" $Id: mitem_userptr.3x,v 1.11 2010/12/04 18:40:45 tom Exp $
-.TH mitem_userptr 3X ""
+.\" $Id: mitem_userptr.3x,v 1.34 2024/03/16 15:35:01 tom Exp $
+.TH mitem_userptr 3X 2024-03-16 "ncurses @NCURSES_MAJOR@.@NCURSES_MINOR@" "Library calls"
 .SH NAME
-\fBmitem_userptr\fR \- associate application data with a menu item
+\fBset_item_userptr\fP,
+\fBitem_userptr\fP \-
+associate application data with a menu item
 .SH SYNOPSIS
-\fB#include <menu.h>\fR
-.br
-int set_item_userptr(ITEM *item, void *userptr);
-.br
-void *item_userptr(const ITEM *item);
-.br
+.nf
+\fB#include <menu.h>
+.PP
+\fBint set_item_userptr(ITEM *\fIitem\fP, void *\fIuserptr\fP);
+\fBvoid *item_userptr(const ITEM *\fIitem\fP);
+.fi
 .SH DESCRIPTION
 Every menu item has a field that can be used to hold application-specific data
-(that is, the menu-driver code leaves it alone).  These functions get and set
+(that is, the menu-driver code leaves it alone).
+These functions get and set
 that field.
 .SH RETURN VALUE
-The function \fBitem_userptr\fR returns a pointer (possibly \fBNULL\fR).
-It does not set errno.
+The function \fBitem_userptr\fP returns a pointer (possibly \fBNULL\fP).
+It does not set \fBerrno\fP.
 .PP
 The \fBset_item_userptr\fP always returns \fBE_OK\fP (success).
-.
-.SH SEE ALSO
-\fBcurses\fR(3X), \fBmenu\fR(3X).
-.SH NOTES
-The header file \fB<menu.h>\fR automatically includes the header file
-\fB<curses.h>\fR.
 .SH PORTABILITY
-These routines emulate the System V menu library.  They were not supported on
+These routines emulate the System V menu library.
+They were not supported on
 Version 7 or BSD versions.
 .PP
 The user pointer is a void pointer.
 We chose not to leave it as a char pointer for SVr4 compatibility.
 .SH AUTHORS
-Juergen Pfeifer.  Manual pages and adaptation for new curses by Eric
-S. Raymond.
+Juergen Pfeifer.
+Manual pages and adaptation for new curses by Eric S. Raymond.
+.SH SEE ALSO
+\fB\%curses\fP(3X),
+\fB\%menu\fP(3X)

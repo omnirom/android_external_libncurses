@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2015 Free Software Foundation, Inc.              *
+ * Copyright 2020,2023 Thomas E. Dickey                                     *
+ * Copyright 1998-2012,2015 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -41,7 +42,7 @@
 
 #include <curses.priv.h>
 
-MODULE_ID("$Id: lib_restart.c,v 1.16 2015/06/27 18:12:15 tom Exp $")
+MODULE_ID("$Id: lib_restart.c,v 1.18 2023/04/29 19:01:25 tom Exp $")
 
 NCURSES_EXPORT(int)
 NCURSES_SP_NAME(restartterm) (NCURSES_SP_DCLx
@@ -64,31 +65,28 @@ NCURSES_SP_NAME(restartterm) (NCURSES_SP_DCLx
     if (TINFO_SETUP_TERM(&new_term, termp, filenum, errret, FALSE) != OK) {
 	result = ERR;
     } else if (SP_PARM != 0) {
-	int saveecho = SP_PARM->_echo;
-	int savecbreak = SP_PARM->_cbreak;
-	int saveraw = SP_PARM->_raw;
-	int savenl = SP_PARM->_nl;
+	TTY_FLAGS save_flags = SP_PARM->_tty_flags;
 
 #ifdef USE_TERM_DRIVER
 	SP_PARM->_term = new_term;
 #endif
-	if (saveecho) {
+	if (save_flags._echo) {
 	    NCURSES_SP_NAME(echo) (NCURSES_SP_ARG);
 	} else {
 	    NCURSES_SP_NAME(noecho) (NCURSES_SP_ARG);
 	}
 
-	if (savecbreak) {
+	if (save_flags._cbreak) {
 	    NCURSES_SP_NAME(cbreak) (NCURSES_SP_ARG);
 	    NCURSES_SP_NAME(noraw) (NCURSES_SP_ARG);
-	} else if (saveraw) {
+	} else if (save_flags._raw) {
 	    NCURSES_SP_NAME(nocbreak) (NCURSES_SP_ARG);
 	    NCURSES_SP_NAME(raw) (NCURSES_SP_ARG);
 	} else {
 	    NCURSES_SP_NAME(nocbreak) (NCURSES_SP_ARG);
 	    NCURSES_SP_NAME(noraw) (NCURSES_SP_ARG);
 	}
-	if (savenl) {
+	if (save_flags._nl) {
 	    NCURSES_SP_NAME(nl) (NCURSES_SP_ARG);
 	} else {
 	    NCURSES_SP_NAME(nonl) (NCURSES_SP_ARG);

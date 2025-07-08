@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2014,2015 Free Software Foundation, Inc.              *
+ * Copyright 2020-2022,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -42,10 +43,7 @@
 
 #include <dump_entry.h>
 
-MODULE_ID("$Id: infocmp.c,v 1.133 2015/05/27 00:57:41 tom Exp $")
-
-#define L_CURL "{"
-#define R_CURL "}"
+MODULE_ID("$Id: infocmp.c,v 1.163 2023/12/16 17:27:47 tom Exp $")
 
 #define MAX_STRING	1024	/* maximum formatted string */
 
@@ -96,7 +94,7 @@ typedef struct {
 static ENTERED *entered;
 
 #undef ExitProgram
-static void ExitProgram(int code) GCC_NORETURN;
+static GCC_NORETURN void ExitProgram(int code);
 /* prototype is to get gcc to accept the noreturn attribute */
 static void
 ExitProgram(int code)
@@ -126,17 +124,46 @@ failed(const char *s)
     ExitProgram(EXIT_FAILURE);
 }
 
-static char *
-canonical_name(char *ptr, char *buf)
+static void
+canonical_name(char *source, char *target)
 /* extract the terminal type's primary name */
 {
-    char *bp;
+    int limit = NAMESIZE;
 
-    _nc_STRCPY(buf, ptr, NAMESIZE);
-    if ((bp = strchr(buf, '|')) != 0)
-	*bp = '\0';
+    while (--limit > 0) {
+	char ch = *source++;
+	if (ch == '|')
+	    break;
+	*target++ = ch;
+    }
+    *target = '\0';
+}
 
-    return (buf);
+static bool
+no_boolean(int value)
+{
+    bool result = (value == ABSENT_BOOLEAN);
+    if (!strcmp(s_absent, s_cancel))
+	result = !VALID_BOOLEAN(value);
+    return result;
+}
+
+static bool
+no_numeric(int value)
+{
+    bool result = (value == ABSENT_NUMERIC);
+    if (!strcmp(s_absent, s_cancel))
+	result = !VALID_NUMERIC(value);
+    return result;
+}
+
+static bool
+no_string(const char *const value)
+{
+    bool result = (value == ABSENT_STRING);
+    if (!strcmp(s_absent, s_cancel))
+	result = !VALID_STRING(value);
+    return result;
 }
 
 /***************************************************************************
@@ -160,10 +187,21 @@ capcmp(PredIdx idx, const char *s, const char *t)
 	return (_nc_capcmp(s, t));
 }
 
+/*
+ * Predicate function to use for "use=" decompilation.
+ *
+ * Return value is used in fmt_entry:
+ *   FAIL  show nothing for this capability.
+ *   FALSE show cancel for booleans (a compromise)
+ *   TRUE  show capability
+ *
+ * The only difference between FALSE/TRUE returns is in the treatment of
+ * booleans.
+ */
 static int
 use_predicate(unsigned type, PredIdx idx)
-/* predicate function to use for use decompilation */
 {
+    int result = FAIL;
     ENTRY *ep;
 
     switch (type) {
@@ -182,16 +220,18 @@ use_predicate(unsigned type, PredIdx idx)
 	     * unlike numbers and strings, whose cancelled/absent state is
 	     * recorded in the terminfo database.
 	     */
-	    for (ep = &entries[1]; ep < entries + termcount; ep++)
-		if (ep->tterm.Booleans[idx] == TRUE) {
-		    is_set = entries[0].tterm.Booleans[idx];
-		    break;
+	    if (idx < NUM_BOOLEANS(&(entries[0].tterm))) {
+		for (ep = &entries[1]; ep < entries + termcount; ep++) {
+		    if (idx < NUM_BOOLEANS(&(ep->tterm))
+			&& (is_set = ep->tterm.Booleans[idx])) {
+			break;
+		    }
 		}
-	    if (is_set != entries[0].tterm.Booleans[idx])
-		return (!is_set);
-	    else
-		return (FAIL);
+		if (is_set != entries[0].tterm.Booleans[idx])
+		    result = (!is_set);
+	    }
 	}
+	break;
 
     case NUMBER:
 	{
@@ -202,45 +242,56 @@ use_predicate(unsigned type, PredIdx idx)
 	     * capability gets the first non-default value found
 	     * in the sequence of use entries'.
 	     */
-	    for (ep = &entries[1]; ep < entries + termcount; ep++)
-		if (VALID_NUMERIC(ep->tterm.Numbers[idx])) {
-		    value = ep->tterm.Numbers[idx];
-		    break;
-		}
+	    if (idx < NUM_NUMBERS(&(entries[0].tterm))) {
+		for (ep = &entries[1]; ep < entries + termcount; ep++)
+		    if (idx < NUM_NUMBERS(&(ep->tterm))
+			&& VALID_NUMERIC(ep->tterm.Numbers[idx])) {
+			value = ep->tterm.Numbers[idx];
+			break;
+		    }
 
-	    if (value != entries[0].tterm.Numbers[idx])
-		return (value != ABSENT_NUMERIC);
-	    else
-		return (FAIL);
+		if (value != entries[0].tterm.Numbers[idx])
+		    result = (value != ABSENT_NUMERIC);
+	    }
 	}
+	break;
 
     case STRING:
 	{
-	    char *termstr, *usestr = ABSENT_STRING;
-
-	    termstr = entries[0].tterm.Strings[idx];
+	    char *termstr = entries[0].tterm.Strings[idx];
+	    char *usestr = ABSENT_STRING;
 
 	    /*
 	     * We take the semantics of multiple uses to be 'each
 	     * capability gets the first non-default value found
 	     * in the sequence of use entries'.
 	     */
-	    for (ep = &entries[1]; ep < entries + termcount; ep++)
-		if (ep->tterm.Strings[idx]) {
-		    usestr = ep->tterm.Strings[idx];
-		    break;
-		}
+	    if (idx < NUM_STRINGS(&(entries[0].tterm))) {
+		for (ep = &entries[1]; ep < entries + termcount; ep++)
+		    if (idx < NUM_STRINGS(&(ep->tterm))
+			&& ep->tterm.Strings[idx]) {
+			usestr = ep->tterm.Strings[idx];
+			break;
+		    }
 
-	    if (usestr == ABSENT_STRING && termstr == ABSENT_STRING)
-		return (FAIL);
-	    else if (!usestr || !termstr || capcmp(idx, usestr, termstr))
-		return (TRUE);
-	    else
-		return (FAIL);
+		if (usestr == CANCELLED_STRING && termstr == ABSENT_STRING)
+		    result = (FAIL);
+		else if (usestr == CANCELLED_STRING && termstr == CANCELLED_STRING)
+		    result = (TRUE);
+		else if (usestr == ABSENT_STRING && termstr == ABSENT_STRING)
+		    result = (FAIL);
+		else if (!usestr || !termstr || capcmp(idx, usestr, termstr))
+		    result = (TRUE);
+	    }
 	}
+	break;
+
+    default:
+	result = FALSE;
+	break;
     }
 
-    return (FALSE);		/* pacify compiler */
+    return (result);
 }
 
 static bool
@@ -271,7 +322,7 @@ useeq(ENTRY * e1, ENTRY * e2)
 }
 
 static bool
-entryeq(TERMTYPE *t1, TERMTYPE *t2)
+entryeq(TERMTYPE2 *t1, TERMTYPE2 *t2)
 /* are two entries equivalent? */
 {
     unsigned i;
@@ -297,16 +348,17 @@ static void
 print_uses(ENTRY * ep, FILE *fp)
 /* print an entry's use references */
 {
-    unsigned i;
-
-    if (!ep->nuses)
+    if (!ep->nuses) {
 	fputs("NULL", fp);
-    else
+    } else {
+	unsigned i;
+
 	for (i = 0; i < ep->nuses; i++) {
 	    fputs(ep->uses[i].name, fp);
 	    if (i < ep->nuses - 1)
 		fputs(" ", fp);
 	}
+    }
 }
 
 static const char *
@@ -329,7 +381,7 @@ dump_boolean(int val)
 
 static void
 dump_numeric(int val, char *buf)
-/* display the value of a boolean capability */
+/* display the value of a numeric capability */
 {
     switch (val) {
     case ABSENT_NUMERIC:
@@ -393,7 +445,7 @@ show_comparing(char **names)
 
 /*
  * ncurses stores two types of non-standard capabilities:
- * a) capabilities listed past the "STOP-HERE" comment in the Caps file. 
+ * a) capabilities listed past the "STOP-HERE" comment in the Caps file.
  *    These are used in the terminfo source file to provide data for termcaps,
  *    e.g., when there is no equivalent capability in terminfo, as well as for
  *    widely-used non-standard capabilities.
@@ -437,7 +489,7 @@ compare_predicate(PredType type, PredIdx idx, const char *name)
 	switch (compare) {
 	case C_DIFFERENCE:
 	    b2 = next_entry->Booleans[idx];
-	    if (!(b1 == ABSENT_BOOLEAN && b2 == ABSENT_BOOLEAN) && b1 != b2)
+	    if (!(no_boolean(b1) && no_boolean(b2)) && (b1 != b2))
 		(void) printf("\t%s: %s%s%s.\n",
 			      name,
 			      dump_boolean(b1),
@@ -485,7 +537,7 @@ compare_predicate(PredType type, PredIdx idx, const char *name)
 	switch (compare) {
 	case C_DIFFERENCE:
 	    n2 = next_entry->Numbers[idx];
-	    if (!((n1 == ABSENT_NUMERIC && n2 == ABSENT_NUMERIC)) && n1 != n2) {
+	    if (!(no_numeric(n1) && no_numeric(n2)) && n1 != n2) {
 		dump_numeric(n1, buf1);
 		dump_numeric(n2, buf2);
 		(void) printf("\t%s: %s, %s.\n", name, buf1, buf2);
@@ -533,7 +585,7 @@ compare_predicate(PredType type, PredIdx idx, const char *name)
 	switch (compare) {
 	case C_DIFFERENCE:
 	    s2 = next_entry->Strings[idx];
-	    if (capcmp(idx, s1, s2)) {
+	    if (!(no_string(s1) && no_string(s2)) && capcmp(idx, s1, s2)) {
 		dump_string(s1, buf1);
 		dump_string(s2, buf2);
 		if (strcmp(buf1, buf2))
@@ -786,7 +838,7 @@ lookup_params(const assoc * table, char *dst, char *src)
 }
 
 static void
-analyze_string(const char *name, const char *cap, TERMTYPE *tp)
+analyze_string(const char *name, const char *cap, TERMTYPE2 *tp)
 {
     char buf2[MAX_TERMINFO_LENGTH];
     const char *sp;
@@ -810,6 +862,8 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 	    char *cp = tp->Strings[i];
 
 	    /* don't use function-key capabilities */
+	    if (strnames[i] == NULL)
+		continue;
 	    if (strnames[i][0] == 'k' && strnames[i][1] == 'f')
 		continue;
 
@@ -817,7 +871,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 		cp[0] != '\0' &&
 		cp != cap) {
 		len = strlen(cp);
-		(void) strncpy(buf2, sp, len);
+		_nc_STRNCPY(buf2, sp, len);
 		buf2[len] = '\0';
 
 		if (_nc_capcmp(cp, buf2))
@@ -873,9 +927,8 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 			? "ECMA+"
 			: "ECMA-"),
 		       sizeof(buf2));
-	    (void) strncpy(buf3, sp + csi, len);
+	    _nc_STRNCPY(buf3, sp + csi, len);
 	    buf3[len] = '\0';
-	    len += (size_t) csi + 1;
 
 	    expansion = lookup_params(std_modes, buf2, buf3);
 	}
@@ -894,9 +947,8 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 			? "DEC+"
 			: "DEC-"),
 		       sizeof(buf2));
-	    (void) strncpy(buf3, sp + csi + 1, len);
+	    _nc_STRNCPY(buf3, sp + csi + 1, len);
 	    buf3[len] = '\0';
-	    len += (size_t) csi + 2;
 
 	    expansion = lookup_params(private_modes, buf2, buf3);
 	}
@@ -910,7 +962,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 	    && sp[next] == 'm') {
 
 	    _nc_STRCPY(buf2, "SGR:", sizeof(buf2));
-	    (void) strncpy(buf3, sp + csi, len);
+	    _nc_STRNCPY(buf3, sp + csi, len);
 	    buf3[len] = '\0';
 	    len += (size_t) csi + 1;
 
@@ -989,7 +1041,8 @@ file_comparison(int argc, char *argv[])
     int i, n;
 
     memset(heads, 0, sizeof(heads));
-    dump_init((char *) 0, F_LITERAL, S_TERMINFO, 0, 65535, itrace, FALSE, FALSE);
+    dump_init((char *) 0, F_LITERAL, S_TERMINFO,
+	      FALSE, 0, 65535, itrace, FALSE, FALSE, FALSE);
 
     for (n = 0; n < argc && n < MAXCOMPARE; n++) {
 	if (freopen(argv[n], "r", stdin) == 0)
@@ -1103,8 +1156,8 @@ file_comparison(int argc, char *argv[])
 	    if (entryeq(&qp->tterm, &rp->tterm) && useeq(qp, rp)) {
 		char name1[NAMESIZE], name2[NAMESIZE];
 
-		(void) canonical_name(qp->tterm.term_names, name1);
-		(void) canonical_name(rp->tterm.term_names, name2);
+		canonical_name(qp->tterm.term_names, name1);
+		canonical_name(rp->tterm.term_names, name2);
 
 		(void) printf("%s = %s\n", name1, name2);
 	    }
@@ -1132,8 +1185,8 @@ file_comparison(int argc, char *argv[])
 		entries[0] = *qp;
 		entries[1] = *rp;
 
-		(void) canonical_name(qp->tterm.term_names, name1);
-		(void) canonical_name(rp->tterm.term_names, name2);
+		canonical_name(qp->tterm.term_names, name1);
+		canonical_name(rp->tterm.term_names, name2);
 
 		switch (compare) {
 		case C_DIFFERENCE:
@@ -1168,35 +1221,38 @@ usage(void)
 	DATA("Options:")
     };
 #undef DATA
+    /* length is given here so the compiler can make everything readonly */
 #define DATA(s) s
-    static const char options[][45] =
+    static const char options[][46] =
     {
 	"  -0    print single-row"
 	,"  -1    print single-column"
-	,"  -K    use termcap-names and BSD syntax"
 	,"  -C    use termcap-names"
+	,"  -D    print database locations"
+	,"  -E    format output as C tables"
 	,"  -F    compare terminfo-files"
+	,"  -G    format %{number} to %'char'"
 	,"  -I    use terminfo-names"
+	,"  -K    use termcap-names and BSD syntax"
 	,"  -L    use long names"
 	,"  -R subset (see manpage)"
 	,"  -T    eliminate size limits (test)"
 	,"  -U    do not post-process entries"
-	,"  -D    print database locations"
 	,"  -V    print version"
+	,"  -W    wrap long strings per -w[n]"
 #if NCURSES_XNAMES
 	,"  -a    with -F, list commented-out caps"
 #endif
 	,"  -c    list common capabilities"
 	,"  -d    list different capabilities"
 	,"  -e    format output for C initializer"
-	,"  -E    format output as C tables"
 	,"  -f    with -1, format complex strings"
-	,"  -G    format %{number} to %'char'"
 	,"  -g    format %'char' to %{number}"
 	,"  -i    analyze initialization/reset"
 	,"  -l    output terminfo names"
 	,"  -n    list capabilities in neither"
 	,"  -p    ignore padding specifiers"
+	,"  -Q number  dump compiled description"
 	,"  -q    brief listing, removes headers"
 	,"  -r    with -C, output in termcap form"
 	,"  -r    with -F, resolve use-references"
@@ -1267,7 +1323,7 @@ string_variable(const char *type)
 
 /* dump C initializers for the terminal type */
 static void
-dump_initializers(TERMTYPE *term)
+dump_initializers(TERMTYPE2 *term)
 {
     unsigned n;
     const char *str = 0;
@@ -1276,9 +1332,9 @@ dump_initializers(TERMTYPE *term)
 	   name_initializer("alias"), entries->tterm.term_names);
 
     for_each_string(n, term) {
-	char buf[MAX_STRING], *sp, *tp;
-
 	if (VALID_STRING(term->Strings[n])) {
+	    char buf[MAX_STRING], *sp, *tp;
+
 	    tp = buf;
 #define TP_LIMIT	((MAX_STRING - 5) - (size_t)(tp - buf))
 	    *tp++ = '"';
@@ -1391,7 +1447,7 @@ dump_initializers(TERMTYPE *term)
 
 /* dump C initializers for the terminal type */
 static void
-dump_termtype(TERMTYPE *term)
+dump_termtype(TERMTYPE2 *term)
 {
     (void) printf("\t%s\n\t\t%s,\n", L_CURL, name_initializer("alias"));
     (void) printf("\t\t(char *)0,\t/* pointer to string table */\n");
@@ -1481,6 +1537,8 @@ show_databases(void)
 
 #if NO_LEAKS
 #define MAIN_LEAKS() \
+    _nc_free_termtype2(&entries[0].tterm); \
+    _nc_free_termtype2(&entries[1].tterm); \
     free(myargv); \
     free(tfile); \
     free(tname)
@@ -1500,12 +1558,14 @@ main(int argc, char *argv[])
     char **myargv;
 
     char *firstdir, *restdir;
-    int c, i, len;
+    int c;
     bool formatted = FALSE;
     bool filecompare = FALSE;
     int initdump = 0;
     bool init_analyze = FALSE;
     bool suppress_untranslatable = FALSE;
+    int quickdump = 0;
+    bool wrap_strings = FALSE;
 
     /* where is the terminfo database location going to default to? */
     restdir = firstdir = 0;
@@ -1527,7 +1587,7 @@ main(int argc, char *argv[])
 
     while ((c = getopt(argc,
 		       argv,
-		       "01A:aB:CcDdEeFfGgIiKLlnpqR:rs:TtUuVv:w:x")) != -1) {
+		       "01A:aB:CcDdEeFfGgIiKLlnpQ:qR:rs:TtUuVv:Ww:x")) != -1) {
 	switch (c) {
 	case '0':
 	    mwidth = 65535;
@@ -1628,6 +1688,10 @@ main(int argc, char *argv[])
 	    ignorepads = TRUE;
 	    break;
 
+	case 'Q':
+	    quickdump = optarg_to_number();
+	    break;
+
 	case 'q':
 	    quiet = TRUE;
 	    s_absent = "-";
@@ -1685,7 +1749,11 @@ main(int argc, char *argv[])
 
 	case 'v':
 	    itrace = (unsigned) optarg_to_number();
-	    set_trace_level(itrace);
+	    use_verbosity(itrace);
+	    break;
+
+	case 'W':
+	    wrap_strings = TRUE;
 	    break;
 
 	case 'w':
@@ -1750,8 +1818,9 @@ main(int argc, char *argv[])
     }
 
     /* set up for display */
-    dump_init(tversion, outform, sortmode, mwidth, mheight, itrace,
-	      formatted, FALSE);
+    dump_init(tversion, outform, sortmode,
+	      wrap_strings, mwidth, mheight, itrace,
+	      formatted, FALSE, quickdump);
 
     if (!filecompare) {
 	/* grab the entries */
@@ -1795,9 +1864,9 @@ main(int argc, char *argv[])
 				   _nc_progname,
 				   tname[termcount]);
 
-		status = _nc_read_entry(tname[termcount],
-					tfile[termcount],
-					&entries[termcount].tterm);
+		status = _nc_read_entry2(tname[termcount],
+					 tfile[termcount],
+					 &entries[termcount].tterm);
 	    }
 
 	    if (status <= 0) {
@@ -1813,8 +1882,16 @@ main(int argc, char *argv[])
 	}
 
 #if NCURSES_XNAMES
-	if (termcount > 1)
-	    _nc_align_termtype(&entries[0].tterm, &entries[1].tterm);
+	if (termcount > 1) {
+	    /*
+	     * User-defined capabilities in different terminal descriptions
+	     * may have the same name/type but different indices.  Line up
+	     * the names to use comparable indices.  We may have more than two
+	     * entries to compare when processing the "-u" option.
+	     */
+	    for (c = 1; c < termcount; ++c)
+		_nc_align_termtype(&entries[c].tterm, &entries[0].tterm);
+	}
 #endif
 
 	/* dump as C initializer for the terminal type */
@@ -1841,6 +1918,8 @@ main(int argc, char *argv[])
 	    analyze_string("rmkx", keypad_local, &entries[0].tterm);
 #undef CUR
 	} else {
+	    int i;
+	    int len;
 
 	    /*
 	     * Here's where the real work gets done
@@ -1852,8 +1931,10 @@ main(int argc, char *argv[])
 				   "%s: about to dump %s\n",
 				   _nc_progname,
 				   tname[0]);
-		(void) printf("#\tReconstructed via infocmp from file: %s\n",
-			      tfile[0]);
+		if (!quiet)
+		    (void)
+			printf("#\tReconstructed via infocmp from file: %s\n",
+			       tfile[0]);
 		dump_entry(&entries[0].tterm,
 			   suppress_untranslatable,
 			   limited,

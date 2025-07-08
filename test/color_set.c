@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2003-2012,2014 Free Software Foundation, Inc.              *
+ * Copyright 2020,2020,2022 Thomas E. Dickey                                *
+ * Copyright 2003-2012,2014 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,7 +27,7 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: color_set.c,v 1.8 2014/02/01 22:10:42 tom Exp $
+ * $Id: color_set.c,v 1.12 2022/12/10 23:36:59 tom Exp $
  */
 
 #include <test.priv.h>
@@ -35,17 +36,53 @@
 
 #define SHOW(n) ((n) == ERR ? "ERR" : "OK")
 
+static void
+usage(int ok)
+{
+    static const char *msg[] =
+    {
+	"Usage: color_set [options]"
+	,""
+	,USAGE_COMMON
+    };
+    size_t n;
+
+    for (n = 0; n < SIZEOF(msg); n++)
+	fprintf(stderr, "%s\n", msg[n]);
+
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
+}
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
+
 int
-main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
     NCURSES_COLOR_T f, b;
-    int i;
+    int ch;
 
+    while ((ch = getopt(argc, argv, OPTS_COMMON)) != -1) {
+	switch (ch) {
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
+	default:
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
+	}
+    }
+    if (optind < argc)
+	usage(FALSE);
+
+    setlocale(LC_ALL, "");
     initscr();
     cbreak();
     noecho();
 
     if (has_colors()) {
+	int i;
+
 	start_color();
 
 	(void) pair_content(0, &f, &b);

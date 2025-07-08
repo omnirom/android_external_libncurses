@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2009-2010,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020,2022 Thomas E. Dickey                                     *
+ * Copyright 2009-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,25 +27,24 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: test_addstr.c,v 1.10 2012/12/16 00:14:10 tom Exp $
+ * $Id: test_addstr.c,v 1.20 2022/12/10 22:28:50 tom Exp $
  *
  * Demonstrate the waddstr() and waddch functions.
  * Thomas Dickey - 2009/9/12
  */
 
 #include <test.priv.h>
-
 #include <linedata.h>
 
+/*
+ * redefinitions to simplify comparison between test_*str programs
+ */
 #define AddNStr    addnstr
 #define AddStr     addstr
 #define MvAddNStr  (void) mvaddnstr
 #define MvWAddNStr (void) mvwaddnstr
 #define WAddNStr   waddnstr
 #define WAddStr    waddstr
-
-#define AddCh      addch
-#define WAddCh     waddch
 
 #define MY_TABSIZE 8
 
@@ -129,7 +129,7 @@ ColOf(char *buffer, int length, int margin)
 
 #define LEN(n) ((length - (n) > n_opt) ? n_opt : (length - (n)))
 static void
-test_adds(int level)
+recursive_test(int level)
 {
     static bool first = TRUE;
 
@@ -155,7 +155,8 @@ test_adds(int level)
 	static char cmd[80];
 	setlocale(LC_ALL, "");
 
-	putenv(strcpy(cmd, "TABSIZE=8"));
+	_nc_STRCPY(cmd, "TABSIZE=8", sizeof(cmd));
+	putenv(cmd);
 
 	initscr();
 	(void) cbreak();	/* take input chars one at a time, no wait for \n */
@@ -211,7 +212,7 @@ test_adds(int level)
 	wmove(work, row, margin + 1);
 	switch (ch) {
 	case key_RECUR:
-	    test_adds(level + 1);
+	    recursive_test(level + 1);
 
 	    if (look)
 		touchwin(look);
@@ -374,32 +375,36 @@ test_adds(int level)
 }
 
 static void
-usage(void)
+usage(int ok)
 {
     static const char *tbl[] =
     {
 	"Usage: test_addstr [options]"
 	,""
+	,USAGE_COMMON
 	,"Options:"
-	,"  -f FILE read data from given file"
-	,"  -n NUM  limit string-adds to NUM bytes on ^N replay"
-	,"  -m      perform wmove/move separately from add-functions"
-	,"  -w      use window-parameter even when stdscr would be implied"
+	," -f FILE  read data from given file"
+	," -n NUM   limit string-adds to NUM bytes on ^N replay"
+	," -m       perform wmove/move separately from add-functions"
+	," -w       use window-parameter even when stdscr would be implied"
     };
     unsigned n;
     for (n = 0; n < SIZEOF(tbl); ++n)
 	fprintf(stderr, "%s\n", tbl[n]);
-    ExitProgram(EXIT_FAILURE);
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
 
 int
-main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
     int ch;
 
     setlocale(LC_ALL, "");
 
-    while ((ch = getopt(argc, argv, "f:mn:w")) != -1) {
+    while ((ch = getopt(argc, argv, OPTS_COMMON "f:mn:w")) != -1) {
 	switch (ch) {
 	case 'f':
 	    init_linedata(optarg);
@@ -415,15 +420,18 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	case 'w':
 	    w_opt = TRUE;
 	    break;
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
 	default:
-	    usage();
-	    break;
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
 	}
     }
     if (optind < argc)
-	usage();
+	usage(FALSE);
 
-    test_adds(0);
+    recursive_test(0);
     endwin();
     ExitProgram(EXIT_SUCCESS);
 }

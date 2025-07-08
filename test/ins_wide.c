@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2002-2012,2014 Free Software Foundation, Inc.              *
+ * Copyright 2020,2022 Thomas E. Dickey                                     *
+ * Copyright 2002-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,7 +27,7 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: ins_wide.c,v 1.21 2014/08/02 17:24:55 tom Exp $
+ * $Id: ins_wide.c,v 1.30 2022/12/10 22:28:50 tom Exp $
  *
  * Demonstrate the wins_wstr() and wins_wch functions.
  * Thomas Dickey - 2002/11/23
@@ -105,7 +106,7 @@ legend(WINDOW *win, int level, Options state, wchar_t *buffer, int length)
 }
 
 static int
-ColOf(wchar_t *buffer, int length, int margin)
+ColOf(const wchar_t *buffer, int length, int margin)
 {
     int n;
     int result;
@@ -236,7 +237,8 @@ test_inserts(int level)
 	static char cmd[80];
 	setlocale(LC_ALL, "");
 
-	putenv(strcpy(cmd, "TABSIZE=8"));
+	_nc_STRCPY(cmd, "TABSIZE=8", sizeof(cmd));
+	putenv(cmd);
 
 	initscr();
 	(void) cbreak();	/* take input chars one at a time, no wait for \n */
@@ -390,6 +392,8 @@ test_inserts(int level)
 	    }
 	    break;
 	default:
+	    if (length >= BUFSIZ - 2)
+		break;
 	    buffer[length++] = (wchar_t) ch;
 	    buffer[length] = '\0';
 
@@ -451,32 +455,36 @@ test_inserts(int level)
 }
 
 static void
-usage(void)
+usage(int ok)
 {
     static const char *tbl[] =
     {
-	"Usage: inserts [options]"
+	"Usage: ins_wide [options]"
 	,""
+	,USAGE_COMMON
 	,"Options:"
-	,"  -f FILE read data from given file"
-	,"  -n NUM  limit string-inserts to NUM bytes on ^N replay"
-	,"  -m      perform wmove/move separately from insert-functions"
-	,"  -w      use window-parameter even when stdscr would be implied"
+	," -f FILE  read data from given file"
+	," -n NUM   limit string-inserts to NUM bytes on ^N replay"
+	," -m       perform wmove/move separately from insert-functions"
+	," -w       use window-parameter even when stdscr would be implied"
     };
     unsigned n;
     for (n = 0; n < SIZEOF(tbl); ++n)
 	fprintf(stderr, "%s\n", tbl[n]);
-    ExitProgram(EXIT_FAILURE);
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
 
 int
-main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
     int ch;
 
     setlocale(LC_ALL, "");
 
-    while ((ch = getopt(argc, argv, "f:mn:w")) != -1) {
+    while ((ch = getopt(argc, argv, OPTS_COMMON "f:mn:w")) != -1) {
 	switch (ch) {
 	case 'f':
 	    init_linedata(optarg);
@@ -492,13 +500,16 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	case 'w':
 	    w_opt = TRUE;
 	    break;
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
 	default:
-	    usage();
-	    break;
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
 	}
     }
     if (optind < argc)
-	usage();
+	usage(FALSE);
 
     test_inserts(0);
     endwin();

@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020,2023 Thomas E. Dickey                                     *
+ * Copyright 1998-2012,2016 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -39,7 +40,7 @@
 #include <curses.priv.h>
 #include <ctype.h>
 
-MODULE_ID("$Id: lib_tracedmp.c,v 1.34 2012/10/27 20:54:42 tom Exp $")
+MODULE_ID("$Id: lib_tracedmp.c,v 1.37 2023/06/24 15:49:45 tom Exp $")
 
 #ifdef TRACE
 
@@ -70,13 +71,13 @@ _tracedump(const char *name, WINDOW *win)
     if (++width + 1 > (int) my_length) {
 	my_length = (unsigned) (2 * (width + 1));
 	my_buffer = typeRealloc(char, my_length, my_buffer);
-	if (my_buffer == 0)
-	    return;
     }
+    if (my_buffer == 0)
+	return;
 
     for (n = 0; n <= win->_maxy; ++n) {
 	char *ep = my_buffer;
-	bool haveattrs, havecolors;
+	bool havecolors;
 
 	/*
 	 * Dump A_CHARTEXT part.  It is more important to make the grid line up
@@ -156,8 +157,8 @@ _tracedump(const char *name, WINDOW *win)
 	for (i = 0; i < 4; ++i) {
 	    const char *hex = " 123456789ABCDEF";
 	    attr_t mask = (attr_t) (0xf << ((i + 4) * 4));
+	    bool haveattrs = FALSE;
 
-	    haveattrs = FALSE;
 	    for (j = 0; j < width; ++j)
 		if (AttrOf(win->_line[n].text[j]) & mask) {
 		    haveattrs = TRUE;

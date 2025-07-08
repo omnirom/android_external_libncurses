@@ -1,6 +1,7 @@
 // * This makes emacs happy -*-Mode: C++;-*-
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright 2018-2021,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2012,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -35,7 +36,7 @@
  *   Demo code for NCursesMenu and NCursesForm written by
  *   Juergen Pfeifer
  *
- * $Id: demo.cc,v 1.41 2012/02/23 10:41:56 tom Exp $
+ * $Id: demo.cc,v 1.52 2023/08/26 19:14:14 tom Exp $
  */
 
 #include "internal.h"
@@ -43,11 +44,11 @@
 #include "cursesm.h"
 #include "cursesf.h"
 
-#ifdef __MINGW32__
+#if (defined(_WIN32) || defined(_WIN64))
 #undef KEY_EVENT
-#endif
-
-#ifndef __MINGW32__
+#undef sleep
+#define sleep(n) Sleep(n)
+#else
 extern "C" unsigned int sleep(unsigned int);
 #endif
 
@@ -104,7 +105,7 @@ class SillyDemo
     }
 
     //  A refresh to any valid panel updates all panels and refreshes
-    //  the screen.  Using mystd is just convenient - We know it's always
+    //  the screen.  Using mystd is just convenient - We know it is always
     //  valid until the end of the program.
 
     mystd->refresh();
@@ -168,7 +169,7 @@ public:
 //
 // -------------------------------------------------------------------------
 //
-template<class T> class MyAction : public NCursesUserItem<T>
+template<class T> class NCURSES_CXX_IMPEXP MyAction : public NCursesUserItem<UserData>
 {
 public:
   MyAction (const char* p_name,
@@ -176,7 +177,7 @@ public:
     : NCursesUserItem<T>(p_name, static_cast<const char*>(0), p_UserData)
   {}
 
-  virtual ~MyAction() {}
+  virtual ~MyAction() THROWS(NCursesException) {}
 
   bool action() {
     SillyDemo a;
@@ -184,9 +185,6 @@ public:
     return FALSE;
   }
 };
-
-template class MyAction<UserData>;
-template class NCURSES_IMPEXP NCursesUserItem<UserData>;
 
 class QuitItem : public NCursesMenuItem
 {
@@ -295,7 +293,7 @@ public:
   {
   }
 
-  ~TestForm() {
+  ~TestForm() THROWS(NCursesException) {
     delete mft;
     delete ift;
     delete eft;
@@ -320,7 +318,7 @@ public:
     for(int i=1; i <= S->labels(); i++) {
       char buf[8];
       assert(i < 100);
-      ::_nc_SPRINTF(buf, _nc_SLIMIT(sizeof(buf)) "Frm%02d", i);
+      ::_nc_SPRINTF(buf, _nc_SLIMIT(sizeof(buf)) "Frm%02d", i % 100);
       (*S)[i] = buf;                                      // Text
       (*S)[i] = Soft_Label_Key_Set::Soft_Label_Key::Left; // Justification
     }
@@ -473,7 +471,7 @@ public:
   {
   }
 
-  ~MyMenu()
+  ~MyMenu() THROWS(NCursesException)
   {
     P->hide();
     delete P;
@@ -540,7 +538,7 @@ void TestApplication::init_labels(Soft_Label_Key_Set& S) const
   for(int i=1; i <= S.labels(); i++) {
     char buf[8];
     assert(i < 100);
-    ::_nc_SPRINTF(buf, _nc_SLIMIT(sizeof(buf)) "Key%02d", i);
+    ::_nc_SPRINTF(buf, _nc_SLIMIT(sizeof(buf)) "Key%02d", i % 100);
     S[i] = buf;                                      // Text
     S[i] = Soft_Label_Key_Set::Soft_Label_Key::Left; // Justification
   }
@@ -551,9 +549,9 @@ void TestApplication::title()
   const char * const titleText = "Simple C++ Binding Demo";
   const int len = ::strlen(titleText);
 
-  titleWindow->bkgd(screen_titles());
-  titleWindow->addstr(0, (titleWindow->cols() - len)/2, titleText);
-  titleWindow->noutrefresh();
+  getTitleWindow()->bkgd(screen_titles());
+  getTitleWindow()->addstr(0, (getTitleWindow()->cols() - len)/2, titleText);
+  getTitleWindow()->noutrefresh();
 }
 
 
@@ -568,3 +566,8 @@ int TestApplication::run()
 // -------------------------------------------------------------------------
 //
 static TestApplication *Demo = new TestApplication();
+
+#if (defined(_WIN32) || defined(_WIN64))
+// This is actually only needed when ncurses is a dll
+NCURSES_CXX_MAIN
+#endif

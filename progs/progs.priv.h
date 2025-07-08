@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2014,2015 Free Software Foundation, Inc.              *
+ * Copyright 2019-2022,2024 Thomas E. Dickey                                *
+ * Copyright 1998-2015,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -30,7 +31,7 @@
  *  Author: Thomas E. Dickey                    1997-on                     *
  ****************************************************************************/
 /*
- * $Id: progs.priv.h,v 1.41 2015/05/23 23:53:55 tom Exp $
+ * $Id: progs.priv.h,v 1.62 2024/04/08 17:28:28 tom Exp $
  *
  *	progs.priv.h
  *
@@ -40,32 +41,9 @@
 #ifndef PROGS_PRIV_H
 #define PROGS_PRIV_H 1
 
-#include <ncurses_cfg.h>
+#include <curses.priv.h>
 
-#if USE_RCS_IDS
-#define MODULE_ID(id) static const char Ident[] = id;
-#else
-#define MODULE_ID(id)		/*nothing */
-#endif
-
-#include <stdlib.h>
 #include <ctype.h>
-#include <string.h>
-#include <sys/types.h>
-
-#if HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
-#if HAVE_SYS_BSDTYPES_H
-#include <sys/bsdtypes.h>	/* needed for ISC */
-#endif
-
-#if HAVE_LIMITS_H
-# include <limits.h>
-#elif HAVE_SYS_PARAM_H
-# include <sys/param.h>
-#endif
 
 #if HAVE_DIRENT_H
 # include <dirent.h>
@@ -93,21 +71,6 @@
 # endif
 #endif
 
-#if HAVE_INTTYPES_H
-# include <inttypes.h>
-#else
-# if HAVE_STDINT_H
-#  include <stdint.h>
-# endif
-#endif
-
-#include <assert.h>
-#include <errno.h>
-
-#if DECL_ERRNO
-extern int errno;
-#endif
-
 #if HAVE_GETOPT_H
 #include <getopt.h>
 #elif !defined(HAVE_GETOPT_HEADER)
@@ -118,81 +81,22 @@ extern char *optarg;
 extern int optind;
 #endif /* HAVE_GETOPT_H */
 
-#include <curses.h>
-#include <term_entry.h>
-#include <nc_termios.h>
 #include <tic.h>
-#include <nc_tparm.h>
 
-#include <nc_string.h>
-#include <nc_alloc.h>
 #if HAVE_NC_FREEALL
 #undef ExitProgram
 #ifdef USE_LIBTINFO
-#define ExitProgram(code) _nc_free_tinfo(code)
+#define ExitProgram(code) exit_terminfo(code)
 #else
 #define ExitProgram(code) _nc_free_tic(code)
 #endif
 #endif
 
-#if defined(__GNUC__) && defined(_FORTIFY_SOURCE)
-#define IGNORE_RC(func) errno = (int) func
-#else
-#define IGNORE_RC(func) (void) func
-#endif /* gcc workarounds */
-
-/* usually in <unistd.h> */
-#ifndef STDOUT_FILENO
-#define STDOUT_FILENO 1
-#endif
-
-#ifndef STDERR_FILENO
-#define STDERR_FILENO 2
-#endif
-
-#ifndef EXIT_SUCCESS
-#define EXIT_SUCCESS 0
-#endif
-
-#ifndef EXIT_FAILURE
-#define EXIT_FAILURE 1
-#endif
-
-#ifndef R_OK
-#define	R_OK	4		/* Test for readable.  */
-#endif
-
-#ifndef W_OK
-#define	W_OK	2		/* Test for writable.  */
-#endif
-
-#ifndef X_OK
-#define	X_OK	1		/* Test for executable.  */
-#endif
-
-#ifndef F_OK
-#define	F_OK	0		/* Test for existence.  */
-#endif
-
-/* usually in <unistd.h> */
-#ifndef STDOUT_FILENO
-#define STDOUT_FILENO 1
-#endif
-
-#ifndef STDERR_FILENO
-#define STDERR_FILENO 2
-#endif
-
-/* may be in limits.h, included from various places */
-#ifndef PATH_MAX
-# if defined(_POSIX_PATH_MAX)
-#  define PATH_MAX _POSIX_PATH_MAX
-# elif defined(MAXPATHLEN)
-#  define PATH_MAX MAXPATHLEN
-# else
-#  define PATH_MAX 255		/* the Posix minimum pathsize */
-# endif
-#endif
+/* error-returns for tput */
+#define ErrUsage	2
+#define ErrTermType	3
+#define ErrCapName	4
+#define ErrSystem(n)	(4 + (n))
 
 /* We use isascii only to guard against use of 7-bit ctype tables in the
  * isprint test in infocmp.
@@ -206,8 +110,28 @@ extern int optind;
 # endif
 #endif
 
-#define UChar(c)    ((unsigned char)(c))
+#define VtoTrace(opt) (unsigned) ((opt > 0) ? opt : (opt == 0))
 
-#define SIZEOF(v) (sizeof(v)/sizeof(v[0]))
+/*
+ * If configured for tracing, the debug- and trace-output are merged together
+ * in the trace file for "upper" levels of the verbose option.
+ */
+#ifdef TRACE
+#define use_verbosity(level) do { \
+ 		set_trace_level(level); \
+		if (_nc_tracing > DEBUG_LEVEL(2)) \
+		    _nc_tracing |= TRACE_MAXIMUM; \
+		else if (_nc_tracing == DEBUG_LEVEL(2)) \
+		    _nc_tracing |= TRACE_ORDINARY; \
+		if (level >= 2) \
+		    curses_trace(_nc_tracing); \
+	} while (0)
+#else
+#define use_verbosity(level) do { set_trace_level(level); } while (0)
+#endif
+
+#ifndef CUR
+#define CUR ((TERMTYPE *)(cur_term))->
+#endif
 
 #endif /* PROGS_PRIV_H */

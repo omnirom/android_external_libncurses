@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 2000-2008,2012 Free Software Foundation, Inc.              *
+ * Copyright 2018-2020,2023 Thomas E. Dickey                                *
+ * Copyright 2000-2008,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -35,7 +36,7 @@
 #include <ctype.h>
 #include <termcap.h>
 
-MODULE_ID("$Id: lib_tgoto.c,v 1.16 2012/02/24 02:08:08 tom Exp $")
+MODULE_ID("$Id: lib_tgoto.c,v 1.23 2023/04/16 17:19:40 tom Exp $")
 
 #if !PURE_TERMINFO
 static bool
@@ -125,7 +126,14 @@ tgoto_internal(const char *string, int x, int y)
 			*value += 1;
 			need_BC = TRUE;
 		    } else {
-			*value = 0200;	/* tputs will treat this as \0 */
+			/* tputs will pretend this is \0, which will almost
+			 * always work since ANSI-compatible terminals ignore
+			 * the character.  ECMA-48 does not document a C1
+			 * control for this value.  A few (obsolete) terminals
+			 * can use this value in special cases, such as cursor
+			 * addressing using single-byte coordinates.
+			 */
+			*value = 0200;
 		    }
 		}
 		result[used++] = (char) *value++;
@@ -199,6 +207,16 @@ tgoto(const char *string, int x, int y)
 	result = tgoto_internal(string, x, y);
     else
 #endif
-	result = TPARM_2((NCURSES_CONST char *) string, y, x);
+    if ((result = TIPARM_2(string, y, x)) == NULL) {
+	/*
+	 * Because termcap did not provide a more general solution such as
+	 * tparm(), it was necessary to handle single-parameter capabilities
+	 * using tgoto().  The internal _nc_tiparm() function returns a NULL
+	 * for that case; retry for the single-parameter case.
+	 */
+	if ((result = TIPARM_1(string, y)) == NULL) {
+	    result = TIPARM_0(string);
+	}
+    }
     returnPtr(result);
 }

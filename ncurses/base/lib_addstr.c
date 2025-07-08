@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2010,2011 Free Software Foundation, Inc.              *
+ * Copyright 2019-2022,2023 Thomas E. Dickey                                *
+ * Copyright 1998-2016,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -44,7 +45,7 @@
 
 #include <curses.priv.h>
 
-MODULE_ID("$Id: lib_addstr.c,v 1.52 2011/05/28 23:02:09 tom Exp $")
+MODULE_ID("$Id: lib_addstr.c,v 1.62 2023/11/21 21:47:23 tom Exp $")
 
 NCURSES_EXPORT(int)
 waddnstr(WINDOW *win, const char *astr, int n)
@@ -54,14 +55,17 @@ waddnstr(WINDOW *win, const char *astr, int n)
 
     T((T_CALLED("waddnstr(%p,%s,%d)"), (void *) win, _nc_visbufn(astr, n), n));
 
-    if (win && (str != 0)) {
+    if (win && (str != 0) && (n != 0)) {
+	bool explicit = (n > 0);
+
 	TR(TRACE_VIRTPUT | TRACE_ATTRS,
 	   ("... current %s", _traceattr(WINDOW_ATTRS(win))));
 	code = OK;
-	if (n < 0)
-	    n = (int) strlen(astr);
 
-	TR(TRACE_VIRTPUT, ("str is not null, length = %d", n));
+	TR(TRACE_VIRTPUT, ("str is not null, length = %d",
+			   (explicit ? n : (int) strlen(str))));
+	if (!explicit)
+	    n = INT_MAX;
 	while ((n-- > 0) && (*str != '\0')) {
 	    NCURSES_CH_T ch;
 	    TR(TRACE_VIRTPUT, ("*str = %#o", UChar(*str)));
@@ -87,7 +91,7 @@ waddchnstr(WINDOW *win, const chtype *astr, int n)
 
     T((T_CALLED("waddchnstr(%p,%p,%d)"), (void *) win, (const void *) astr, n));
 
-    if (!win)
+    if (!win || !astr)
 	returnCode(ERR);
 
     y = win->_cury;
@@ -142,7 +146,7 @@ wadd_wchnstr(WINDOW *win, const cchar_t *astr, int n)
        _nc_viscbuf(astr, n),
        n));
 
-    if (!win)
+    if (!win || !astr)
 	returnCode(ERR);
 
     y = win->_cury;
@@ -183,7 +187,7 @@ wadd_wchnstr(WINDOW *win, const cchar_t *astr, int n)
 	if (isWidecExt(astr[i]))
 	    continue;
 
-	len = wcwidth(CharOf(astr[i]));
+	len = _nc_wacs_width(CharOf(astr[i]));
 
 	if (x + len - 1 <= win->_maxx) {
 	    line->text[x] = _nc_render(win, astr[i]);
@@ -194,6 +198,8 @@ wadd_wchnstr(WINDOW *win, const cchar_t *astr, int n)
 		    }
 		    SetWidecExt(line->text[x + j], j);
 		}
+	    } else {
+		len = 1;
 	    }
 	    x = (NCURSES_SIZE_T) (x + len);
 	    end += len - 1;
@@ -224,14 +230,17 @@ waddnwstr(WINDOW *win, const wchar_t *str, int n)
 
     T((T_CALLED("waddnwstr(%p,%s,%d)"), (void *) win, _nc_viswbufn(str, n), n));
 
-    if (win && (str != 0)) {
+    if (win && (str != 0) && (n != 0)) {
+	bool explicit = (n > 0);
+
 	TR(TRACE_VIRTPUT | TRACE_ATTRS,
 	   ("... current %s", _traceattr(WINDOW_ATTRS(win))));
 	code = OK;
-	if (n < 0)
-	    n = (int) wcslen(str);
 
-	TR(TRACE_VIRTPUT, ("str is not null, length = %d", n));
+	TR(TRACE_VIRTPUT, ("str is not null, length = %d",
+			   (explicit ? n : (int) wcslen(str))));
+	if (!explicit)
+	    n = INT_MAX;
 	while ((n-- > 0) && (*str != L('\0'))) {
 	    NCURSES_CH_T ch;
 	    TR(TRACE_VIRTPUT, ("*str[0] = %#lx", (unsigned long) *str));

@@ -1,7 +1,8 @@
 #!/bin/sh
-# $Id: edit_cfg.sh,v 1.17 2008/08/30 19:44:25 tom Exp $
+# $Id: edit_cfg.sh,v 1.19 2022/07/16 18:00:59 tom Exp $
 ##############################################################################
-# Copyright (c) 1998-2007,2008 Free Software Foundation, Inc.                #
+# Copyright 2020,2022 Thomas E. Dickey                                       #
+# Copyright 1998-2007,2008 Free Software Foundation, Inc.                    #
 #                                                                            #
 # Permission is hereby granted, free of charge, to any person obtaining a    #
 # copy of this software and associated documentation files (the "Software"), #
@@ -50,22 +51,22 @@ for name in \
 	HAVE_VALUES_H \
 	IOSTREAM_NAMESPACE
 do
-	rm -f $2.bak
-	mv $2 $2.bak
-	if ( grep "[ 	]$name[ 	]1" $1 2>&1 >/dev/null)
+	rm -f "$2".bak
+	mv "$2" "$2".bak
+	if ( grep "[ 	]${name}[ 	]1" "$1" >/dev/null 2>&1)
 	then
 		value=1
-		sed -e 's/define '$name'.*$/define '$name' 1/' $2.bak >$2
+		sed -e 's/define '"$name"'.*$/define '"$name"' 1/' "$2".bak >"$2"
 	else
 		value=0
-		sed -e 's/define '$name'.*$/define '$name' 0/' $2.bak >$2
+		sed -e 's/define '"$name"'.*$/define '"$name"' 0/' "$2".bak >"$2"
 	fi
-	if (cmp -s $2 $2.bak)
+	if (cmp -s "$2" "$2".bak)
 	then
 		echo '... '$name $value
-		mv $2.bak $2
+		mv "$2".bak "$2"
 	else
 		echo '... '$name $value
-		rm -f $2.bak
+		rm -f "$2".bak
 	fi
 done

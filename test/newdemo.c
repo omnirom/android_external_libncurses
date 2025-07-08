@@ -2,7 +2,7 @@
  *  newdemo.c	-	A demo program using PDCurses. The program illustrate
  *  	 		the use of colours for text output.
  *
- * $Id: newdemo.c,v 1.41 2014/08/02 23:10:56 tom Exp $
+ * $Id: newdemo.c,v 1.48 2022/12/10 23:36:05 tom Exp $
  */
 
 #include <test.priv.h>
@@ -50,7 +50,7 @@ static const char *messages[] =
 static void
 trap(int sig GCC_UNUSED)
 {
-    endwin();
+    stop_curses();
     ExitProgram(EXIT_FAILURE);
 }
 
@@ -61,11 +61,12 @@ static int
 WaitForUser(WINDOW *win)
 {
     time_t t;
-    chtype key;
 
     nodelay(win, TRUE);
     t = time((time_t *) 0);
+
     while (1) {
+	chtype key;
 	if ((int) (key = (chtype) wgetch(win)) != ERR) {
 	    if (key == 'q' || key == 'Q')
 		return 1;
@@ -214,25 +215,55 @@ BouncingBalls(WINDOW *win)
     return 0;
 }
 
+static void
+usage(int ok)
+{
+    static const char *msg[] =
+    {
+	"Usage: newdemo [options]"
+	,""
+	,USAGE_COMMON
+    };
+    size_t n;
+
+    for (n = 0; n < SIZEOF(msg); n++)
+	fprintf(stderr, "%s\n", msg[n]);
+
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
+}
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
+
 /*
  *  Main driver
  */
 int
-main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+main(int argc, char *argv[])
 {
     WINDOW *win;
-    int w, x, y, i, j, k;
+    int x, y, i, k;
     char buffer[SIZEOF(messages) * 80];
-    const char *message;
     int width, height;
     chtype save[80];
-    chtype c;
+    int ch;
+
+    while ((ch = getopt(argc, argv, OPTS_COMMON)) != -1) {
+	switch (ch) {
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
+	default:
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
+	}
+    }
+    if (optind < argc)
+	usage(FALSE);
 
     setlocale(LC_ALL, "");
 
-    CATCHALL(trap);
-
-    initscr();
+    InitAndCatch(initscr(), trap);
     if (has_colors())
 	start_color();
     cbreak();
@@ -241,11 +272,16 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
     height = 14;		/* Create a drawing window */
     win = newwin(height, width, (LINES - height) / 2, (COLS - width) / 2);
     if (win == NULL) {
-	endwin();
+	stop_curses();
 	ExitProgram(EXIT_FAILURE);
     }
 
     while (1) {
+	int w;
+	int j;
+	chtype c;
+	const char *message;
+
 	set_colors(win, 1, COLOR_WHITE, COLOR_BLUE);
 	werase(win);
 
@@ -299,11 +335,11 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	message = messages[j = 0];
 	i = 1;
 	w = width - 2;
-	strcpy(buffer, message);
+	_nc_STRCPY(buffer, message, sizeof(buffer));
 	while (j < NMESSAGES) {
 	    while ((int) strlen(buffer) < w) {
-		strcat(buffer, " ... ");
-		strcat(buffer, messages[++j % NMESSAGES]);
+		_nc_STRCAT(buffer, " ... ", sizeof(buffer));
+		_nc_STRCAT(buffer, messages[++j % NMESSAGES], sizeof(buffer));
 	    }
 
 	    if (i < w)
@@ -360,6 +396,6 @@ main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
 	if (WaitForUser(win) == 1)
 	    break;
     }
-    endwin();
+    stop_curses();
     ExitProgram(EXIT_SUCCESS);
 }

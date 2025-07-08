@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2014 Free Software Foundation, Inc.              *
+ * Copyright 2018-2020,2022 Thomas E. Dickey                                *
+ * Copyright 1998-2014,2017 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,9 +27,10 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: rain.c,v 1.41 2014/08/02 17:24:07 tom Exp $
+ * $Id: rain.c,v 1.57 2022/12/04 00:40:11 tom Exp $
  */
 #include <test.priv.h>
+#include <popup_msg.h>
 
 /* rain 11/3/1980 EPS/CITHEP */
 
@@ -55,6 +57,7 @@ typedef struct DATA {
 
 #ifdef USE_PTHREADS
 pthread_cond_t cond_next_drop;
+pthread_mutex_t mutex_drop_data;
 pthread_mutex_t mutex_next_drop;
 static int used_threads;
 
@@ -66,11 +69,18 @@ typedef struct {
 static STATS drop_threads[MAX_THREADS];
 #endif
 
+#if HAVE_USE_WINDOW
+static int
+safe_wgetch(WINDOW *w, void *data GCC_UNUSED)
+{
+    return wgetch(w);
+}
+#endif
+
 static void
 onsig(int n GCC_UNUSED)
 {
-    curs_set(1);
-    endwin();
+    stop_curses();
     ExitProgram(EXIT_FAILURE);
 }
 
@@ -191,7 +201,7 @@ draw_part(void (*func) (DATA *), int state, DATA * data)
 static int
 put_next_drop(void)
 {
-    pthread_cond_signal(&cond_next_drop);
+    pthread_cond_broadcast(&cond_next_drop);
     pthread_mutex_unlock(&mutex_next_drop);
 
     return 0;
@@ -219,7 +229,7 @@ draw_drop(void *arg)
      * Find myself in the list of threads so we can count the number of loops.
      */
     for (mystats = 0; mystats < MAX_THREADS; ++mystats) {
-#if defined(__MINGW32__) && !defined(__WINPTHREADS_VERSION)
+#if defined(_NC_WINDOWS) && !defined(__WINPTHREADS_VERSION)
 	if (drop_threads[mystats].myself.p == pthread_self().p)
 #else
 	if (drop_threads[mystats].myself == pthread_self())
@@ -237,7 +247,9 @@ draw_drop(void *arg)
 	 * to the data which it uses for setting up this thread (but it has
 	 * been modified to use different coordinates).
 	 */
+	pthread_mutex_lock(&mutex_drop_data);
 	mydata = *(DATA *) arg;
+	pthread_mutex_unlock(&mutex_drop_data);
 
 	draw_part(part1, 0, &mydata);
 	draw_part(part2, 1, &mydata);
@@ -245,6 +257,7 @@ draw_drop(void *arg)
 	draw_part(part4, 3, &mydata);
 	draw_part(part5, 4, &mydata);
 	draw_part(part6, 0, &mydata);
+
     } while (get_next_drop());
 
     return NULL;
@@ -285,30 +298,83 @@ start_drop(DATA * data)
 static int
 get_input(void)
 {
-    return USING_WINDOW(stdscr, wgetch);
+    return USING_WINDOW1(stdscr, wgetch, safe_wgetch);
 }
 
-int
-main(int argc GCC_UNUSED,
-     char *argv[]GCC_UNUSED)
+static void
+usage(int ok)
 {
+    static const char *msg[] =
+    {
+	"Usage: rain [options]"
+	,""
+	,USAGE_COMMON
+	,"Options:"
+#if HAVE_USE_DEFAULT_COLORS
+	," -d       invoke use_default_colors"
+#endif
+    };
+    size_t n;
+
+    for (n = 0; n < SIZEOF(msg); n++)
+	fprintf(stderr, "%s\n", msg[n]);
+
+    ExitProgram(ok ? EXIT_SUCCESS : EXIT_FAILURE);
+}
+/* *INDENT-OFF* */
+VERSION_COMMON()
+/* *INDENT-ON* */
+
+int
+main(int argc, char *argv[])
+{
+    static const char *help[] =
+    {
+	"Commands:",
+	" q/Q        exit the program",
+	" s          do single-step",
+	" <space>    undo single-step",
+	"",
+	0
+    };
+
     bool done = FALSE;
     DATA drop;
 #ifndef USE_PTHREADS
     DATA last[MAX_DROP];
 #endif
     int j = 0;
+    int ch;
+#if HAVE_USE_DEFAULT_COLORS
+    bool d_option = FALSE;
+#endif
+
+    while ((ch = getopt(argc, argv, OPTS_COMMON "d")) != -1) {
+	switch (ch) {
+#if HAVE_USE_DEFAULT_COLORS
+	case 'd':
+	    d_option = TRUE;
+	    break;
+#endif
+	case OPTS_VERSION:
+	    show_version(argv);
+	    ExitProgram(EXIT_SUCCESS);
+	default:
+	    usage(ch == OPTS_USAGE);
+	    /* NOTREACHED */
+	}
+    }
+    if (optind < argc)
+	usage(FALSE);
 
     setlocale(LC_ALL, "");
 
-    CATCHALL(onsig);
-
-    initscr();
+    InitAndCatch(initscr(), onsig);
     if (has_colors()) {
 	int bg = COLOR_BLACK;
 	start_color();
 #if HAVE_USE_DEFAULT_COLORS
-	if (use_default_colors() == OK)
+	if (d_option && (use_default_colors() == OK))
 	    bg = -1;
 #endif
 	init_pair(1, COLOR_BLUE, (short) bg);
@@ -319,7 +385,9 @@ main(int argc GCC_UNUSED,
     curs_set(0);
     timeout(0);
 
-#ifndef USE_PTHREADS
+#ifdef USE_PTHREADS
+    pthread_mutex_init(&mutex_drop_data, NULL);
+#else /* !USE_PTHREADS */
     for (j = MAX_DROP; --j >= 0;) {
 	last[j].x = random_x();
 	last[j].y = random_y();
@@ -328,14 +396,21 @@ main(int argc GCC_UNUSED,
 #endif
 
     while (!done) {
+#ifdef USE_PTHREADS
+	pthread_mutex_lock(&mutex_drop_data);
+
 	drop.x = random_x();
 	drop.y = random_y();
 
-#ifdef USE_PTHREADS
 	if (start_drop(&drop) != 0) {
 	    beep();
 	}
+
+	pthread_mutex_unlock(&mutex_drop_data);
 #else
+	drop.x = random_x();
+	drop.y = random_y();
+
 	/*
 	 * The non-threaded code draws parts of each drop on each loop.
 	 */
@@ -373,11 +448,17 @@ main(int argc GCC_UNUSED,
 	case (KEY_RESIZE):
 	    break;
 #endif
+	case HELP_KEY_1:
+	    popup_msg(stdscr, help);
+	    break;
+	case ERR:
+	    break;
+	default:
+	    beep();
 	}
 	napms(50);
     }
-    curs_set(1);
-    endwin();
+    stop_curses();
 #ifdef USE_PTHREADS
     printf("Counts per thread:\n");
     for (j = 0; j < MAX_THREADS; ++j)

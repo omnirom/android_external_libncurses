@@ -1,6 +1,7 @@
-# $Id: MKunctrl.awk,v 1.27 2012/06/09 20:29:33 tom Exp $
+# $Id: MKunctrl.awk,v 1.30 2024/02/03 21:09:14 tom Exp $
 ##############################################################################
-# Copyright (c) 1998-2009,2012 Free Software Foundation, Inc.                #
+# Copyright 2020,2024 Thomas E. Dickey                                       #
+# Copyright 1998-2012,2017 Free Software Foundation, Inc.                    #
 #                                                                            #
 # Permission is hereby granted, free of charge, to any person obtaining a    #
 # copy of this software and associated documentation files (the "Software"), #
@@ -143,6 +144,7 @@ END	{
 		print  "\tint check = (int) ChCharOf(ch);"
 		print  "\tconst char *result;"
 		print  ""
+		print  "\t(void) sp;"
 		print  "\tif (check >= 0 && check < (int)SIZEOF(unctrl_table)) {"
 		print  "#if NCURSES_EXT_FUNCS"
 		print  "\t\tif ((sp != 0)"
@@ -153,6 +155,7 @@ END	{
 		print  "\t\telse"
 		print  "\t\tif ((check >= 160)"
 		print  "\t\t && (check < 256)"
+		print  "\t\t && !_nc_unicode_locale()"
 		print  "\t\t && ((sp != 0)"
 		print  "\t\t  && ((sp->_legacy_coding > 0)"
 		print  "\t\t   || (sp->_legacy_coding == 0"
